@@ -3182,6 +3182,7 @@ function transform_children(children, context) {
 	let pending_group = [];
 	/** @type {{ name: string, tracked: boolean }[]} */
 	let pending_guard_flags = [];
+	let fragment_hop_count = 0;
 
 	let skipped = 0;
 
@@ -3195,6 +3196,9 @@ function transform_children(children, context) {
 
 		// Push <!> placeholder for the _$_.if anchor
 		state.template?.push('<!>');
+		if (is_fragment) {
+			fragment_hop_count += 1;
+		}
 
 		if (initial === null && root) {
 			create_initial(group_nodes[0]);
@@ -3268,6 +3272,10 @@ function transform_children(children, context) {
 		}
 
 		flush_pending_group();
+
+		if (is_fragment && is_template_or_control_flow(node)) {
+			fragment_hop_count += 1;
+		}
 
 		if (
 			node.type === 'VariableDeclaration' ||
@@ -3622,18 +3630,19 @@ function transform_children(children, context) {
 		state.final?.push(
 			b.stmt(b.call('_$_.append', b.id('__anchor'), initial, emitted_next && b.true)),
 		);
-		state.hoisted.push(
-			b.var(
-				template_id,
-				b.call(
-					'_$_.template',
-					join_template(
-						/** @type {NonNullable<TransformClientState['template']>} */ (state.template),
-					),
-					b.literal(flags),
-				),
-			),
+		const template_array = /** @type {NonNullable<TransformClientState['template']>} */ (
+			state.template
 		);
+		const template_args = [join_template(template_array), b.literal(flags)];
+
+		// For fragments, add the pre-calculated hop count as a third argument.
+		// This count reflects emitted top-level positions after return-guard grouping.
+		if (is_fragment) {
+			const node_count = fragment_hop_count || 1;
+			template_args.push(b.literal(node_count));
+		}
+
+		state.hoisted.push(b.var(template_id, b.call('_$_.template', ...template_args)));
 	}
 }
 
