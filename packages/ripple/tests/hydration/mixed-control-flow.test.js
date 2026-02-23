@@ -24,21 +24,21 @@ describe('hydration > mixed control flow blocks', () => {
 			ClientComponents.MixedControlFlowReactive,
 		);
 
-		expect(
-			Array.from(container.querySelectorAll('.item')).map((node) => node.textContent),
-		).toEqual(['A:One', 'A:Two']);
+		expect(Array.from(container.querySelectorAll('.item')).map((node) => node.textContent)).toEqual(
+			['A:One', 'A:Two'],
+		);
 
 		container.querySelector('.toggle-mode')?.click();
 		flushSync();
-		expect(
-			Array.from(container.querySelectorAll('.item')).map((node) => node.textContent),
-		).toEqual(['B:One', 'B:Two']);
+		expect(Array.from(container.querySelectorAll('.item')).map((node) => node.textContent)).toEqual(
+			['B:One', 'B:Two'],
+		);
 
 		container.querySelector('.add-item')?.click();
 		flushSync();
-		expect(
-			Array.from(container.querySelectorAll('.item')).map((node) => node.textContent),
-		).toEqual(['B:One', 'B:Two', 'B:Three']);
+		expect(Array.from(container.querySelectorAll('.item')).map((node) => node.textContent)).toEqual(
+			['B:One', 'B:Two', 'B:Three'],
+		);
 
 		container.querySelector('.toggle-show')?.click();
 		flushSync();
@@ -46,9 +46,9 @@ describe('hydration > mixed control flow blocks', () => {
 
 		container.querySelector('.toggle-show')?.click();
 		flushSync();
-		expect(
-			Array.from(container.querySelectorAll('.item')).map((node) => node.textContent),
-		).toEqual(['B:One', 'B:Two', 'B:Three']);
+		expect(Array.from(container.querySelectorAll('.item')).map((node) => node.textContent)).toEqual(
+			['B:One', 'B:Two', 'B:Three'],
+		);
 	});
 
 	it('hydrates async pending path in mixed control flow without losing leading structure', async () => {
