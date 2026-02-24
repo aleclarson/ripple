@@ -1,24 +1,73 @@
 import { DocsLayout } from '../../components/docs-layout.ripple';
+import { DocHeading } from '../../components/doc-heading.ripple';
+import { DocCodeGroup } from '../../components/doc-code-block.ripple';
 
-#server {
-	import { get_doc } from '../../lib/markdown.js';
+const toc = [
+	{ href: '#unterminated-regular-expression', text: 'Unterminated regular expression', level: 2 },
+	{ href: '#unexpected-token', text: 'Unexpected token }', level: 2 },
+];
 
-	export function load_doc() {
-		return get_doc('troubleshooting');
-	}
-}
+const text_brace_code = `export component TextBrace() {
+  // valid
+  <p>{'Hello world!'}</p>
+
+  // invalid
+  // <p>Hello world!</p>
+}`;
+
+const bracey_code = `export component Bracey() {
+  // valid
+  <input />
+  <img />
+  <hr />
+  <br />
+
+  // invalid
+  // <input>
+  // <img>
+  // <hr>
+  // <br>
+}`;
 
 export component TroubleshootingPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Troubleshooting Common Errors"
+		prevLink={{ href: '/docs/libraries', text: 'Libraries' }}
+		{toc}
 		currentPath="/docs/troubleshooting"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="troubleshooting-common-errors">
+			{'Troubleshooting Common Errors'}
+		</DocHeading>
+
+		<DocHeading level={2} id="unterminated-regular-expression">
+			{'Unterminated regular expression'}
+		</DocHeading>
+
+		<p>
+			{'While this may be caused by an actual unterminated regular expression, most of the time, it\'s caused by not putting your DOM text nodes within expression {braces}.'}
+		</p>
+
+		<DocCodeGroup code={text_brace_code} lang="ripple" />
+
+		<p>
+			{'Read more: '}
+			<a href="/docs/guide/syntax">{'Syntax'}</a>
+		</p>
+
+		<DocHeading level={2} id="unexpected-token">
+			{'Unexpected token }. Did you mean &rbrace; or {"}"} ?'}
+		</DocHeading>
+
+		<p>
+			{'If you\'ve verified that you don\'t have any unclosed braces and are still encountering this, check for any usage of void elements that aren\'t using JSX self-closing syntax.'}
+		</p>
+
+		<DocCodeGroup code={bracey_code} lang="ripple" />
+
+		<p>
+			{'Read more: '}
+			<a href="/docs/guide/syntax">{'Syntax'}</a>
+		</p>
 	</DocsLayout>
 }

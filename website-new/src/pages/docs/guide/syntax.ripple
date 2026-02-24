@@ -1,24 +1,338 @@
 import { DocsLayout } from '../../../components/docs-layout.ripple';
+import { DocHeading } from '../../../components/doc-heading.ripple';
+import { DocCodeBlock, DocCodeGroup } from '../../../components/doc-code-block.ripple';
+import { DocCallout } from '../../../components/doc-callout.ripple';
 
-#server {
-	import { get_doc } from '../../../lib/markdown.js';
+const toc = [
+	{ href: '#defining-a-ripple-component', text: 'Defining a Ripple Component', level: 2 },
+	{
+		href: '#caveat-templates-must-be-within-components',
+		text: 'Caveat: Templates Must be within Components',
+		level: 2,
+	},
+	{ href: '#early-returns-in-components', text: 'Early Returns in Components', level: 2 },
+	{ href: '#concept-expressions', text: 'Concept: Expressions', level: 2 },
+	{ href: '#example-displaying-text', text: 'Example: Displaying Text', level: 2 },
+	{ href: '#example-text-interpolation', text: 'Example: Text Interpolation', level: 2 },
+	{
+		href: '#concept-templates-as-lexical-scopes',
+		text: 'Concept: Templates as Lexical Scopes',
+		level: 2,
+	},
+	{ href: '#attribute-binding', text: 'Attribute Binding', level: 2 },
+	{ href: '#raw-html', text: 'Raw HTML', level: 2 },
+	{ href: '#styling-raw-html', text: 'Styling Raw HTML', level: 3 },
+];
 
-	export function load_doc() {
-		return get_doc('guide/syntax');
-	}
+const hello_component_code = `component Hello() {
+  <span>{'Hello World!'}</span>
+}`;
+
+const templates_outside_component_code = `// ❌ Wrong - Templates outside the component
+const element = <div>
+  {'Hello'}
+</div>; // Compilation error
+
+function regularFunction() {
+  return <span>
+    {'Not allowed'}
+  </span>; // Compilation error
 }
 
-export component SyntaxPage() {
-	const doc = #server.load_doc();
+const myTemplate = <div>
+  {'Cannot assign JSX'}
+</div>; // Compilation error
 
+// ✅ Correct - Templates only inside components
+component MyComponent() {
+  // Template syntax is valid here
+  <div>{'Hello World'}</div>
+
+  // You can have JavaScript code mixed with templates
+  const message = 'Dynamic content';
+  console.log('This JavaScript works');
+
+  <p>{message}</p>
+}
+
+// ✅ Correct - Helper functions return data, not templates
+function getMessage() {
+  return 'Hello from function'; // Return data, not JSX
+}
+
+component App() {
+  <div>{getMessage()}</div> // Use function result in template
+}`;
+
+const early_return_code = `component Profile({ user }) {
+  if (!user) {
+    <p>{'Please sign in to continue.'}</p>
+    return;
+  }
+
+  <h1>{user.name}</h1>
+  <p>{user.email}</p>
+}`;
+
+const displaying_text_code = `// ✅ Correct - Text is an expression
+<span>{'Hello World!'}</span>
+
+// ❌ Wrong - Compilation error
+<span>Hello World!</span>`;
+
+const displaying_text_js_code = `// Think of it like this:
+let greet_text = 'Hello World!';
+// compared to this:
+let greet_text = Hello World!;`;
+
+const text_interpolation_code = `<span>{\`Message: \${msg}\`}</span>
+<span>{'Message: ' + msg}</span>`;
+
+const template_scope_code = `component TemplateScope() {
+  <div>
+    const // Variable declarations inside templates
+    message = 'Hello from template scope';
+    let count = 42;
+
+    // Function calls and expressions
+    console.log('This runs during render');
+
+    // Conditional logic
+    const isEven = count % 2 === 0;
+
+    <h1>{message}</h1>
+    <p>
+      {'Count is: '}
+      {count}
+    </p>
+
+    if (isEven) {
+      <span>{'Count is even'}</span>
+    }
+
+    // Nested scopes work too
+    <section>
+      const sectionData = 'Nested scope variable';
+      <p>{sectionData}</p>
+    </section>
+
+    debugger;
+    // You can even put debugger statements
+  </div>
+}`;
+
+const attribute_binding_code = `<span data-my-attr={attr_val}>{'Hi there!'}</span>`;
+
+const plain_attribute_code = `<input type="text" />`;
+
+const raw_html_code = `export component App() {
+  let source = \`
+<h1>My Blog Post</h1>
+<p>Hi! I like JS and Ripple.</p>
+\`;
+
+  <article>{html source}</article>
+}`;
+
+const raw_html_malformed_code = `{html '<div>'}content{html '</div>'}`;
+
+export component SyntaxPage() {
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Component Syntax"
+		prevLink={{ href: '/docs/guide/application', text: 'Creating an Application' }}
+		nextLink={{ href: '/docs/guide/components', text: 'Components' }}
+		{toc}
 		currentPath="/docs/guide/syntax"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="component-syntax">{'Component Syntax'}</DocHeading>
+
+		<p>
+			{'Ripple\'s syntax is a superset of JSX, with one notable difference: components and elements (which we\'ll call templates) are written as statements rather than expressions.'}
+		</p>
+
+		<p>
+			{'Ripple\'s compiler then transforms your components into optimized JavaScript code that surgically applies fine-grained state changes to the DOM.'}
+		</p>
+
+		<DocHeading level={2} id="defining-a-ripple-component">
+			{'Defining a Ripple Component'}
+		</DocHeading>
+
+		<p>
+			{'To define a component in Ripple, we can use the '}
+			<code>{'component'}</code>
+			{' keyword, in place of where we\'d normally use a '}
+			<code>{'function'}</code>
+			{' keyword. Internally, Ripple\'s compiler will transform that into a function that it can call.'}
+		</p>
+
+		<DocCodeBlock code={hello_component_code} lang="ripple" />
+
+		<DocCallout type="info" title="Notice Anything Missing?">
+			<p>
+				{'The lack of a return statement, unlike a (functional-style) JSX component isn\'t erroneous. As explained above, templates are statements rather than expressions, unlike JSX. We\'ll explore what you can do with that later!'}
+			</p>
+		</DocCallout>
+
+		<DocHeading level={2} id="caveat-templates-must-be-within-components">
+			{'Caveat: Templates Must be within Components'}
+		</DocHeading>
+
+		<p>
+			{'Unlike JSX, Ripple can only have templates within the body of a component. This means that helper functions should not (and cannot) return any templates, but rather just data. This design enforces clear separation between component templates and regular JavaScript logic, making code more predictable and easier to analyze.'}
+		</p>
+
+		<DocCodeBlock code={templates_outside_component_code} lang="ripple" />
+
+		<DocHeading level={2} id="early-returns-in-components">
+			{'Early Returns in Components'}
+		</DocHeading>
+
+		<p>
+			{'Ripple supports early exits from component/template execution via guard clauses. Use '}
+			<code>{'return;'}</code>
+			{' to stop evaluating the rest of the current render path after a condition is met.'}
+		</p>
+
+		<DocCodeBlock code={early_return_code} lang="ripple" />
+
+		<p>
+			<strong>{'Rules:'}</strong>
+		</p>
+
+		<ul>
+			<li>
+				{'Use only '}
+				<code>{'return;'}</code>
+				{' (without a value) inside component/template scopes.'}
+			</li>
+			<li>
+				<code>{'return'}</code>
+				{' with a value (for example '}
+				<code>{'return \'x\''}</code>
+				{' or '}
+				<code>{'return <div />'}</code>
+				{') is a compile error.'}
+			</li>
+			<li>
+				<code>{'return'}</code>
+				{' is not allowed at module top level.'}
+			</li>
+			<li>
+				<code>{'return'}</code>
+				{' is a control-flow exit, not a JSX return value mechanism.'}
+			</li>
+		</ul>
+
+		<DocHeading level={2} id="concept-expressions">{'Concept: Expressions'}</DocHeading>
+
+		<p>
+			{'In Ripple (and JSX), we can interpolate expressions into the template with a pair of {braces}. Inside the braces, we can put a JavaScript expression, which will then be converted to a string (if it is not already) to be inserted into the DOM.'}
+		</p>
+
+		<DocHeading level={2} id="example-displaying-text">{'Example: Displaying Text'}</DocHeading>
+
+		<p>
+			{'This is the first place we can notice the difference between Ripple and JSX. You\'ll need to place your text inside {braces} to start an expression. Again, this is because Ripple templates are statements rather than expressions, so we cannot have text in the middle of the template, as it would be akin to writing text in the middle of your code.'}
+		</p>
+
+		<DocCodeBlock code={displaying_text_code} lang="ripple" />
+
+		<DocCodeBlock code={displaying_text_js_code} lang="js" />
+
+		<DocHeading level={2} id="example-text-interpolation">
+			{'Example: Text Interpolation'}
+		</DocHeading>
+
+		<p>
+			{'The most basic form of data-binding is text interpolation. In the example below, we\'ll declare a '}
+			<code>{'<span>'}</code>
+			{' element as a statement, then use a pair of {braces} to declare an expression, inside which we put our string expression, like we would in plain JavaScript.'}
+		</p>
+
+		<DocCodeBlock code={text_interpolation_code} lang="ripple" />
+
+		<DocHeading level={2} id="concept-templates-as-lexical-scopes">
+			{'Concept: Templates as Lexical Scopes'}
+		</DocHeading>
+
+		<p>
+			{'In Ripple, templates act as lexical scopes, allowing you to declare variables, call functions, and execute JavaScript statements directly within JSX elements - similar to block statements in regular JavaScript.'}
+		</p>
+
+		<DocCodeBlock code={template_scope_code} lang="ripple" />
+
+		<p>
+			<strong>{'Key Benefits:'}</strong>
+		</p>
+
+		<ul>
+			<li>
+				<strong>{'Inline Logic'}</strong>
+				{': Execute JavaScript directly where you need it in the template'}
+			</li>
+			<li>
+				<strong>{'Local Variables'}</strong>
+				{': Declare variables scoped to specific parts of your template'}
+			</li>
+			<li>
+				<strong>{'Debugging'}</strong>
+				{': Place '}
+				<code>{'console.log()'}</code>
+				{' or '}
+				<code>{'debugger'}</code>
+				{' statements anywhere in templates'}
+			</li>
+			<li>
+				<strong>{'Dynamic Computation'}</strong>
+				{': Calculate values inline without helper functions'}
+			</li>
+		</ul>
+
+		<p>
+			<strong>{'Scope Rules:'}</strong>
+		</p>
+
+		<ul>
+			<li>{'Variables declared in templates are scoped to that template block'}</li>
+			<li>{'Nested elements create nested scopes'}</li>
+			<li>{'Variables from outer scopes are accessible in inner scopes'}</li>
+			<li>{'Template variables don\'t leak to the component function scope'}</li>
+		</ul>
+
+		<DocHeading level={2} id="attribute-binding">{'Attribute Binding'}</DocHeading>
+
+		<p>
+			{'Attribute Binding in Ripple is achieved the same way as JSX. To bind an expression to an attribute, we write the attribute\'s name and an equal sign, like plain HTML, but instead of quotes, we use {braces}, within which, we can write a JS expression that evaluates to our desired value.'}
+		</p>
+
+		<DocCodeBlock code={attribute_binding_code} lang="ripple" />
+
+		<DocCallout type="info" title="Plain attributes can still be used.">
+			<DocCodeBlock code={plain_attribute_code} lang="ripple" />
+		</DocCallout>
+
+		<DocHeading level={2} id="raw-html">{'Raw HTML'}</DocHeading>
+
+		<p>
+			{'By default, all text nodes in Ripple are escaped to prevent unintended script injections. If you\'d like to render trusted HTML onto your page, you can use the HTML directive to opt-out:'}
+		</p>
+
+		<DocCodeBlock code={raw_html_code} lang="ripple" />
+
+		<DocCallout type="info" title="Note">
+			<p>
+				{'The raw HTML passed in should be valid, well-formed HTML. The following example will not work, since closing tags by themselves are considered malformed HTML.'}
+			</p>
+			<DocCodeBlock code={raw_html_malformed_code} lang="ripple" />
+		</DocCallout>
+
+		<DocHeading level={3} id="styling-raw-html">{'Styling Raw HTML'}</DocHeading>
+
+		<p>
+			{'As raw HTML is not managed by Ripple, scoped styles do not apply to it. To style raw content, refer to '}
+			<a href="/docs/guide/styling#global-styles">{'Styling'}</a>
+			{'.'}
+		</p>
 	</DocsLayout>
 }

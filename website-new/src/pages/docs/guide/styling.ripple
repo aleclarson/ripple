@@ -1,24 +1,227 @@
 import { DocsLayout } from '../../../components/docs-layout.ripple';
+import { DocHeading } from '../../../components/doc-heading.ripple';
+import { DocCodeBlock, DocCodeGroup } from '../../../components/doc-code-block.ripple';
+import { DocCallout } from '../../../components/doc-callout.ripple';
 
-#server {
-	import { get_doc } from '../../../lib/markdown.js';
+const toc = [
+	{ href: '#dynamic-classes', text: 'Dynamic Classes', level: 2 },
+	{ href: '#dynamic-inline-styles', text: 'Dynamic Inline Styles', level: 2 },
+	{ href: '#global-styles', text: 'Global Styles', level: 2 },
+	{ href: '#global-keyframes', text: 'Global Keyframes', level: 3 },
+];
 
-	export function load_doc() {
-		return get_doc('guide/styling');
-	}
+const scoped_style_code = `component MyComponent() {
+  <div class="container">
+    <h1>{'Hello World'}</h1>
+  </div>
+
+  <style>
+    .container {
+      background: blue;
+      padding: 1rem;
+    }
+
+    h1 {
+      color: white;
+      font-size: 2rem;
+    }
+  </style>
+}`;
+
+const dynamic_classes_code = `let includeBaz = track(true);
+<div class={{ foo: true, bar: false, baz: @includeBaz }} />
+// becomes: class="foo baz"
+
+<div class={['foo', { baz: false }, 0 && 'bar', [true && 'bat']]} />
+// becomes: class="foo bat"
+
+let count = track(3);
+<div class={['foo', { bar: @count > 2 }, @count > 3 && 'bat']} />
+// becomes: class="foo bar"`;
+
+const dynamic_inline_styles_code = `let color = track('red');
+
+<div style={\`color: \${@color}; font-weight: bold; background-color: gray\`} />
+<div style={{ color: @color, fontWeight: 'bold', 'background-color': 'gray' }} />
+
+const style = {
+  @color,
+  fontWeight: 'bold',
+  'background-color': 'gray',
+};
+
+// using object spread
+<div style={{ ...style }} />
+
+// using object directly
+<div {style} />`;
+
+const global_styles_code = `export component App() {
+  <div class="container">
+    <Child />
+  </div>
+
+  <style>
+    /* Scoped to Parent only */
+    .container {
+      padding: 1rem;
+    }
+
+    /* Global - Not Recommended - applies to any .highlight in any component */
+    :global(.highlight) {
+      color: red;
+      font-weight: bold;
+    }
+
+    /* Global: - Recommended - scoped parent with global child selector */
+    .container :global(.nested) {
+      margin-left: 2rem;
+    }
+
+    /* Global block - everything inside is global */
+    div :global {
+      .header {
+        font-size: 3rem;
+      }
+    }
+  </style>
 }
 
-export component StylingPage() {
-	const doc = #server.load_doc();
+component Child() {
+  // The div should have its font-size at 2rem from parent
+  <div>
+    <h2 class="header">{'This is a header with font-size 3rem'}</h2>
+    <span class="highlight">{'This will be red and bold'}</span>
+    <p class="nested">{'This will have left margin'}</p>
+  </div>
+}`;
 
+const global_keyframes_code = `export component App() {
+  <div class="parent">
+    <Child />
+  </div>
+
+  <style>
+    /* Scoped keyframe - only usable within Parent */
+    @keyframes slideIn {
+      from {
+        transform: translateX(-100%);
+      }
+      to {
+        transform: translateX(0);
+      }
+    }
+
+    /* Global keyframe - usable in any component */
+    @keyframes -global-fadeIn {
+      0% {
+        opacity: 0;
+      }
+      100% {
+        opacity: 1;
+      }
+    }
+
+    .parent {
+      animation: slideIn 1s;
+    }
+  </style>
+}
+
+component Child() {
+  <div class="child">{'Child content'}</div>
+
+  <style>
+    .child {
+      animation: fadeIn 1s; /* Uses global fadeIn from Parent */
+    }
+  </style>
+}`;
+
+export component StylingPage() {
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Styling"
+		prevLink={{ href: '/docs/guide/head-management', text: 'Head Management' }}
+		nextLink={{ href: '/docs/guide/bindings', text: 'Bindings' }}
+		{toc}
 		currentPath="/docs/guide/styling"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="styling">{'Styling'}</DocHeading>
+
+		<p>
+			{'Ripple supports native CSS styling that\'s scoped (localized) to the given component using the '}
+			<code>{'<style>'}</code>
+			{' element.'}
+		</p>
+
+		<DocCodeBlock code={scoped_style_code} lang="ripple" />
+
+		<DocCallout type="info" title="Note">
+			<p>
+				{'The '}
+				<code>{'<style>'}</code>
+				{' element must be top-level within a '}
+				<code>{'component'}</code>
+				{'.'}
+			</p>
+		</DocCallout>
+
+		<DocHeading level={2} id="dynamic-classes">{'Dynamic Classes'}</DocHeading>
+
+		<p>
+			{'In Ripple, the '}
+			<code>{'class'}</code>
+			{' attribute can accept more than just a string — it also supports objects and arrays. Truthy values are included as class names, while falsy values are omitted. This behavior is powered by the '}
+			<code>{'clsx'}</code>
+			{' library.'}
+		</p>
+
+		<p>{'Examples:'}</p>
+
+		<DocCodeBlock code={dynamic_classes_code} lang="ripple" />
+
+		<DocHeading level={2} id="dynamic-inline-styles">{'Dynamic Inline Styles'}</DocHeading>
+
+		<p>
+			{'Sometimes you might need to dynamically set inline styles. For this, you can use the '}
+			<code>{'style'}</code>
+			{' attribute, passing either a string or an object to it:'}
+		</p>
+
+		<DocCodeBlock code={dynamic_inline_styles_code} lang="ripple" />
+
+		<p>
+			{'Both examples above will render the same inline styles, however, it\'s recommended to use the object notation as it\'s typically more performance optimized.'}
+		</p>
+
+		<DocCallout type="info" title="CSS Property Names">
+			<p>
+				{'When passing an object to the '}
+				<code>{'style'}</code>
+				{' attribute, you can use either camelCase or kebab-case for CSS property names.'}
+			</p>
+		</DocCallout>
+
+		<DocHeading level={2} id="global-styles">{'Global Styles'}</DocHeading>
+
+		<p>
+			{'By default, all styles in Ripple are scoped to the component. To apply global styles, use the '}
+			<code>{':global()'}</code>
+			{' pseudo-class or '}
+			<code>{':global'}</code>
+			{' block:'}
+		</p>
+
+		<DocCodeGroup code={global_styles_code} lang="ripple" />
+
+		<DocHeading level={3} id="global-keyframes">{'Global Keyframes'}</DocHeading>
+
+		<p>
+			{'Keyframes are scoped by default. To create global keyframes that can be shared across components, prefix the animation name with '}
+			<code>{'-global-'}</code>
+			{':'}
+		</p>
+
+		<DocCodeGroup code={global_keyframes_code} lang="ripple" />
 	</DocsLayout>
 }

@@ -1,24 +1,52 @@
 import { DocsLayout } from '../../components/docs-layout.ripple';
-
-#server {
-	import { get_doc } from '../../lib/markdown.js';
-
-	export function load_doc() {
-		return get_doc('best-practices');
-	}
-}
+import { DocHeading } from '../../components/doc-heading.ripple';
 
 export component BestPracticesPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Best Practices"
+		prevLink={{ href: '/docs/comparison', text: 'Comparison to Other Frameworks' }}
+		nextLink={{ href: '/docs/libraries', text: 'Libraries' }}
 		currentPath="/docs/best-practices"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="best-practices">{'Best Practices'}</DocHeading>
+
+		<p>{'A summary:'}</p>
+
+		<ol>
+			<li>
+				<strong>{'Reactivity'}</strong>
+				{': Use '}
+				<code>{'track()'}</code>
+				{' to create reactive variables and '}
+				<code>{'@'}</code>
+				{' to access them'}
+			</li>
+			<li>
+				<strong>{'Strings'}</strong>
+				{': Wrap string literals in '}
+				<code>{'{"string"}'}</code>
+				{' within templates'}
+			</li>
+			<li>
+				<strong>{'Effects'}</strong>
+				{': Use '}
+				<code>{'effect()'}</code>
+				{' for side effects, not direct reactive variable access'}
+			</li>
+			<li>
+				<strong>{'Components'}</strong>
+				{': Keep components focused and use TypeScript interfaces for props'}
+			</li>
+			<li>
+				<strong>{'Styling'}</strong>
+				{': Use scoped '}
+				<code>{'<style>'}</code>
+				{' elements for component-specific styles'}
+			</li>
+			<li>
+				<strong>{'Collections'}</strong>
+				{': Use RippleArray/RippleSet for reactive collections instead of regular arrays/sets'}
+			</li>
+		</ol>
 	</DocsLayout>
 }

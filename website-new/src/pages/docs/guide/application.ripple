@@ -1,24 +1,198 @@
 import { DocsLayout } from '../../../components/docs-layout.ripple';
+import { DocHeading } from '../../../components/doc-heading.ripple';
+import { DocCodeBlock } from '../../../components/doc-code-block.ripple';
 
-#server {
-	import { get_doc } from '../../../lib/markdown.js';
+const toc = [
+	{ href: '#the-root-component', text: 'The Root Component', level: 2 },
+	{ href: '#mounting-the-app', text: 'Mounting the App', level: 2 },
+	{ href: '#hydration', text: 'Hydration', level: 2 },
+	{ href: '#when-to-use-mount-vs-hydrate', text: 'When to use mount() vs hydrate()', level: 3 },
+	{ href: '#server-side-rendering', text: 'Server-Side Rendering', level: 3 },
+	{ href: '#cleanup', text: 'Cleanup', level: 3 },
+];
 
-	export function load_doc() {
-		return get_doc('guide/application');
-	}
-}
+const app_mount_code = `import { mount } from 'ripple';
+// @ts-expect-error: known issue, we're working on it
+import { App } from './App.ripple';
+
+mount(App, {
+\ttarget: document.getElementById('app')!,
+});`;
+
+const component_tree_code = `App (root component)
+├─ TodoList
+│  └─ TodoItem
+│     ├─ TodoDeleteButton
+│     └─ TodoEditButton
+└─ TodoFooter
+   ├─ TodoClearButton
+   └─ TodoStatistics`;
+
+const hydrate_code = `import { hydrate } from 'ripple';
+import { App } from './App.ripple';
+
+hydrate(App, {
+  target: document.getElementById('app')!,
+});`;
+
+const server_render_code = `// server.js
+import { render } from 'ripple/server';
+import { App } from './App.ripple';
+
+const html = render(App, {
+  props: { title: 'Hello world!' },
+});
+
+// Send html to the client
+res.send(\`
+  <!DOCTYPE html>
+  <html>
+    <body>
+      <div id="app">\${html}</div>
+      <script type="module" src="/client.js"></script>
+    </body>
+  </html>
+\`);`;
+
+const client_hydrate_code = `// client.js
+import { hydrate } from 'ripple';
+import { App } from './App.ripple';
+
+hydrate(App, {
+  target: document.getElementById('app')!,
+  props: { title: 'Hello world!' }
+});`;
+
+const cleanup_code = `const cleanup = mount(App, { target: document.getElementById('app')! });
+
+// Later, to unmount:
+cleanup();`;
 
 export component ApplicationPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Creating a Ripple application"
+		prevLink={{ href: '/docs/quick-start', text: 'Quick Start' }}
+		nextLink={{ href: '/docs/guide/syntax', text: 'Template Syntax' }}
+		{toc}
 		currentPath="/docs/guide/application"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="creating-a-ripple-application">
+			{'Creating a Ripple application'}
+		</DocHeading>
+
+		<p>{'We\'ll start with this code snippet, and break it down step by step.'}</p>
+
+		<DocCodeBlock code={app_mount_code} lang="js" />
+
+		<DocHeading level={2} id="the-root-component">{'The Root Component'}</DocHeading>
+
+		<p>
+			{'The '}
+			<code>{'App'}</code>
+			{' "object" we\'ve imported is actually a component. Every app requires a "root component" that can contain other components as its children.'}
+		</p>
+
+		<p>
+			{'While many examples in this guide only need a single component, most real applications are organized into a tree of nested, reusable components. For example, a Todo application\'s component tree might look like this:'}
+		</p>
+
+		<DocCodeBlock code={component_tree_code} lang="text" />
+
+		<p>
+			{'In later sections of the guide, we will discuss how to define and compose multiple components together. Before that, we will focus on what happens inside a single component.'}
+		</p>
+
+		<DocHeading level={2} id="mounting-the-app">{'Mounting the App'}</DocHeading>
+
+		<p>
+			{'To bring the app to life, we\'ll use the '}
+			<code>{'mount'}</code>
+			{' function that we imported to attach the application to the DOM.'}
+		</p>
+
+		<p>
+			<code>{'mount()'}</code>
+			{' expects a component, and an options object. Inside the options object, we\'ll use '}
+			<code>{'document.getElementById()'}</code>
+			{' to acquire a reference to the DOM element we want the app to be attached to the '}
+			<code>{'target'}</code>
+			{' property.'}
+		</p>
+
+		<DocHeading level={2} id="hydration">{'Hydration'}</DocHeading>
+
+		<p>
+			{'When using server-side rendering (SSR), the server pre-renders your components to HTML. The client then needs to "hydrate" this HTML by attaching event listeners and making it interactive, without re-creating the DOM elements.'}
+		</p>
+
+		<p>
+			{'Ripple provides the '}
+			<code>{'hydrate()'}</code>
+			{' function for this purpose:'}
+		</p>
+
+		<DocCodeBlock code={hydrate_code} lang="js" />
+
+		<DocHeading level={3} id="when-to-use-mount-vs-hydrate">
+			{'When to use '}
+			<code>{'mount()'}</code>
+			{' vs '}
+			<code>{'hydrate()'}</code>
+		</DocHeading>
+
+		<table>
+			<thead>
+				<tr>
+					<th>{'Function'}</th>
+					<th>{'Use Case'}</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td>
+						<code>{'mount()'}</code>
+					</td>
+					<td>
+						{'Client-side only rendering (SPA). Clears the target element and renders fresh.'}
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<code>{'hydrate()'}</code>
+					</td>
+					<td>
+						{'Server-side rendering (SSR). Adopts existing server-rendered HTML and makes it interactive.'}
+					</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<DocHeading level={3} id="server-side-rendering">{'Server-Side Rendering'}</DocHeading>
+
+		<p>
+			{'On the server, use the '}
+			<code>{'render()'}</code>
+			{' function from '}
+			<code>{'ripple/server'}</code>
+			{' to generate HTML:'}
+		</p>
+
+		<DocCodeBlock code={server_render_code} lang="js" />
+
+		<p>{'Then on the client, hydrate the server-rendered HTML:'}</p>
+
+		<DocCodeBlock code={client_hydrate_code} lang="js" />
+
+		<DocHeading level={3} id="cleanup">{'Cleanup'}</DocHeading>
+
+		<p>
+			{'Both '}
+			<code>{'mount()'}</code>
+			{' and '}
+			<code>{'hydrate()'}</code>
+			{' return a cleanup function that unmounts the component:'}
+		</p>
+
+		<DocCodeBlock code={cleanup_code} lang="js" />
 	</DocsLayout>
 }

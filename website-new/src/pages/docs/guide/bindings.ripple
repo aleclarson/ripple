@@ -1,24 +1,901 @@
 import { DocsLayout } from '../../../components/docs-layout.ripple';
+import { DocHeading } from '../../../components/doc-heading.ripple';
+import { DocCodeGroup, DocCodeBlock } from '../../../components/doc-code-block.ripple';
+import { DocCallout } from '../../../components/doc-callout.ripple';
 
-#server {
-	import { get_doc } from '../../../lib/markdown.js';
+const toc = [
+	{ href: '#form-bindings', text: 'Form Bindings', level: 2 },
+	{ href: '#bindvalue', text: 'bindValue', level: 3 },
+	{ href: '#bindchecked', text: 'bindChecked', level: 3 },
+	{ href: '#bindindeterminate', text: 'bindIndeterminate', level: 3 },
+	{ href: '#bindgroup', text: 'bindGroup', level: 3 },
+	{ href: '#bindfiles', text: 'bindFiles', level: 3 },
+	{ href: '#dimension-bindings', text: 'Dimension Bindings', level: 2 },
+	{
+		href: '#bindclientwidth--bindclientheight',
+		text: 'bindClientWidth / bindClientHeight',
+		level: 3,
+	},
+	{
+		href: '#bindoffsetwidth--bindoffsetheight',
+		text: 'bindOffsetWidth / bindOffsetHeight',
+		level: 3,
+	},
+	{ href: '#resizeobserver-bindings', text: 'ResizeObserver Bindings', level: 2 },
+	{ href: '#bindcontentrect', text: 'bindContentRect', level: 3 },
+	{ href: '#bindcontentboxsize', text: 'bindContentBoxSize', level: 3 },
+	{ href: '#bindborderboxsize', text: 'bindBorderBoxSize', level: 3 },
+	{ href: '#binddevicepixelcontentboxsize', text: 'bindDevicePixelContentBoxSize', level: 3 },
+	{ href: '#content-editable-bindings', text: 'Content Editable Bindings', level: 2 },
+	{ href: '#bindinnerhtml', text: 'bindInnerHTML', level: 3 },
+	{ href: '#bindinnertext', text: 'bindInnerText', level: 3 },
+	{ href: '#bindtextcontent', text: 'bindTextContent', level: 3 },
+	{ href: '#element-reference-binding', text: 'Element Reference Binding', level: 2 },
+	{ href: '#bindnode', text: 'bindNode', level: 3 },
+	{ href: '#combining-multiple-bindings', text: 'Combining Multiple Bindings', level: 2 },
+	{ href: '#best-practices', text: 'Best Practices', level: 2 },
+];
 
-	export function load_doc() {
-		return get_doc('guide/bindings');
-	}
-}
+const bind_value_text_code = `import { track, bindValue } from 'ripple';
+
+export component App() {
+  let name = track('');
+
+  <div>
+    <input type="text" {ref bindValue(name)} placeholder="Enter your name" />
+    <p>
+      {'Hello, '}
+      {@name || 'stranger'}
+      {'!'}
+    </p>
+    <button onClick={() => (@name = '')}>{'Clear'}</button>
+  </div>
+}`;
+
+const bind_value_number_code = `import { track, bindValue } from 'ripple';
+
+export component App() {
+  let age = track(0);
+
+  <div>
+    <input type="number" {ref bindValue(age)} min="0" max="120" />
+    <p>
+      {'Age: '}
+      {@age}
+      {' years old'}
+    </p>
+    <button onClick={() => (@age = @age + 1)}>{'Increment'}</button>
+  </div>
+}`;
+
+const bind_value_select_code = `import { track, bindValue } from 'ripple';
+
+export component App() {
+  let selectedFruit = track('apple');
+
+  <div>
+    <select {ref bindValue(selectedFruit)}>
+      <option value="apple">{'Apple'}</option>
+      <option value="banana">{'Banana'}</option>
+      <option value="cherry">{'Cherry'}</option>
+      <option value="durian">{'Durian'}</option>
+    </select>
+    <p>
+      {'You selected: '}
+      {@selectedFruit}
+    </p>
+  </div>
+}`;
+
+const bind_value_multiple_select_code = `import { track, bindValue } from 'ripple';
+
+export component App() {
+  let selectedColors = track(['red', 'blue']);
+
+  <div>
+    <select multiple {ref bindValue(selectedColors)} style="height: 100px">
+      <option value="red">{'Red'}</option>
+      <option value="green">{'Green'}</option>
+      <option value="blue">{'Blue'}</option>
+      <option value="yellow">{'Yellow'}</option>
+    </select>
+    <p>
+      {'Selected colors: '}
+      {@selectedColors.join(', ')}
+    </p>
+  </div>
+}`;
+
+const bind_checked_code = `import { track, bindChecked } from 'ripple';
+
+export component App() {
+  let agreed = track(false);
+
+  <div>
+    <label>
+      <input type="checkbox" {ref bindChecked(agreed)} />
+      {' I agree to the terms and conditions'}
+    </label>
+    <p>
+      {'Status: '}
+      {@agreed ? 'Agreed' : 'Not agreed'}
+    </p>
+    <button disabled={!@agreed}>{'Submit'}</button>
+  </div>
+}`;
+
+const bind_indeterminate_code = `import { track, bindChecked, bindIndeterminate } from 'ripple';
+
+export component App() {
+  let checked = track(false);
+  let indeterminate = track(true);
+
+  <div>
+    <label>
+      <input
+        type="checkbox"
+        {ref bindChecked(checked)}
+        {ref bindIndeterminate(indeterminate)}
+      />
+      {' Select All'}
+    </label>
+    <p>
+      {'Checked: '}
+      {@checked ? 'Yes' : 'No'}
+    </p>
+    <p>
+      {'Indeterminate: '}
+      {@indeterminate ? 'Yes' : 'No'}
+    </p>
+    <button
+      onClick={() => {
+        @indeterminate = !@indeterminate;
+        if (@indeterminate) {
+          @checked = false;
+        }
+      }}
+    >
+      {'Toggle Indeterminate'}
+    </button>
+  </div>
+}`;
+
+const bind_group_checkbox_code = `import { track, bindGroup } from 'ripple';
+
+export component App() {
+  let hobbies = track(['reading']);
+
+  <div>
+    <label>
+      <input type="checkbox" value="reading" {ref bindGroup(hobbies)} />
+      {' Reading'}
+    </label>
+    <label>
+      <input type="checkbox" value="gaming" {ref bindGroup(hobbies)} />
+      {' Gaming'}
+    </label>
+    <label>
+      <input type="checkbox" value="sports" {ref bindGroup(hobbies)} />
+      {' Sports'}
+    </label>
+    <label>
+      <input type="checkbox" value="cooking" {ref bindGroup(hobbies)} />
+      {' Cooking'}
+    </label>
+    <p>
+      {'Selected: '}
+      {@hobbies.join(', ') || 'none'}
+    </p>
+  </div>
+
+  <button onClick={() => (@hobbies = ['reading'])}>{'Reset'}</button>
+}`;
+
+const bind_group_radio_code = `import { track, bindGroup } from 'ripple';
+
+export component App() {
+  let size = track('medium');
+
+  <div>
+    <label>
+      <input type="radio" name="size" value="small" {ref bindGroup(size)} />
+      {' Small'}
+    </label>
+    <label>
+      <input type="radio" name="size" value="medium" {ref bindGroup(size)} />
+      {' Medium'}
+    </label>
+    <label>
+      <input type="radio" name="size" value="large" {ref bindGroup(size)} />
+      {' Large'}
+    </label>
+    <p>
+      {'Selected size: '}
+      {@size}
+    </p>
+  </div>
+
+  <button onClick={() => (@size = 'medium')}>{'Reset to "medium"'}</button>
+}`;
+
+const bind_files_code = `import { track, bindFiles, bindNode } from 'ripple';
+
+export component App() {
+  let files = track();
+  let version = track(0);
+  let input = track();
+
+  const clearFiles = () => {
+    @files = new DataTransfer().files; // null or undefined does not work
+    @input.value = null; // reset the input selected message
+  };
+
+  const createSampleFile = () => {
+    @version++;
+    const dt = new DataTransfer();
+    const file = new File([
+      \`Hello, World version: \${@version}!\`,
+    ], \`sample_\${@version}.txt\`, {
+      type: 'text/plain',
+    });
+    dt.items.add(file);
+    for (const file of @files ?? []) {
+      dt.items.add(file);
+    }
+    @files = dt.files;
+  };
+
+  <div>
+    <input type="file" {ref bindFiles(files)} {ref bindNode(input)} multiple />
+
+    <div>
+      if (@files && @files.length > 0) {
+        <p>{'Selected files:'}</p>
+        <ul>
+          for (const file of Array.from(@files)) {
+            <li>
+              {file.name}
+              {' ('}
+              {file.size}
+              {' bytes)'}
+            </li>
+          }
+        </ul>
+      } else {
+        <p>{'No files selected'}</p>
+      }
+    </div>
+
+    <button onClick={clearFiles}>{'Clear files'}</button>
+    <button onClick={createSampleFile}>{'Add sample file'}</button>
+  </div>
+}`;
+
+const bind_files_note_code = `const dt = new DataTransfer();
+dt.items.add(new File(['content'], 'filename.txt'));
+@files = dt.files;`;
+
+const bind_client_dimensions_code = `import { track, bindClientWidth, bindClientHeight } from 'ripple';
+
+export component App() {
+  let width = track(0);
+  let height = track(0);
+
+  <div>
+    <div
+      {ref bindClientWidth(width)}
+      {ref bindClientHeight(height)}
+      style={{
+        resize: 'both',
+        overflow: 'auto',
+        border: '2px solid blue',
+        padding: '20px',
+        minWidth: '200px',
+        minHeight: '100px',
+      }}
+    >
+      {'Resize me! (drag bottom-right corner)'}
+      <p>
+        {'Client Width: '}
+        {@width}
+        {'px'}
+      </p>
+      <p>
+        {'Client Height: '}
+        {@height}
+        {'px'}
+      </p>
+    </div>
+  </div>
+}`;
+
+const bind_offset_dimensions_code = `import { track, bindOffsetWidth, bindOffsetHeight } from 'ripple';
+
+export component App() {
+  let width = track(0);
+  let height = track(0);
+
+  <div>
+    <div
+      {ref bindOffsetWidth(width)}
+      {ref bindOffsetHeight(height)}
+      style={{
+        border: '10px solid green',
+        padding: '20px',
+        width: '300px',
+        height: '150px',
+      }}
+    >
+      {'Box with borders'}
+    </div>
+    <p>
+      {'Offset Width: '}
+      {@width}
+      {'px (includes borders)'}
+    </p>
+    <p>
+      {'Offset Height: '}
+      {@height}
+      {'px (includes borders)'}
+    </p>
+  </div>
+}`;
+
+const bind_content_rect_code = `import { track, bindContentRect } from 'ripple';
+
+export component App() {
+  let rect = track({ width: 0, height: 0, top: 0, left: 0 });
+
+  <div>
+    <div
+      {ref bindContentRect(rect)}
+      style={{
+        resize: 'both',
+        overflow: 'auto',
+        border: '2px solid purple',
+        padding: '20px',
+        minWidth: '200px',
+        minHeight: '100px',
+      }}
+    >
+      {'Resize me!'}
+    </div>
+    <pre>{JSON.stringify(@rect, null, 2)}</pre>
+  </div>
+}`;
+
+const bind_content_box_size_code = `import { track, bindContentBoxSize } from 'ripple';
+
+export component App() {
+  let size = track([]);
+
+  <div>
+    <div
+      {ref bindContentBoxSize(size)}
+      style={{
+        border: '5px solid orange',
+        padding: '15px',
+        width: '250px',
+        height: '100px',
+      }}
+    >
+      {'Content box size'}
+    </div>
+    <pre>
+      {'Block size: '}
+      {@size[0]?.blockSize || 0}
+      {'px\\n'}
+      {'Inline size: '}
+      {@size[0]?.inlineSize || 0}
+      {'px'}
+    </pre>
+  </div>
+}`;
+
+const bind_border_box_size_code = `import { track, bindBorderBoxSize } from 'ripple';
+
+export component App() {
+  let size = track([]);
+
+  <div>
+    <div
+      {ref bindBorderBoxSize(size)}
+      style={{
+        border: '5px solid teal',
+        padding: '15px',
+        width: '250px',
+        height: '100px',
+      }}
+    >
+      {'Border box size'}
+    </div>
+    <pre>
+      {'Block size: '}
+      {@size[0]?.blockSize || 0}
+      {'px\\n'}
+      {'Inline size: '}
+      {@size[0]?.inlineSize || 0}
+      {'px'}
+    </pre>
+  </div>
+}`;
+
+const bind_device_pixel_code = `import { track, bindDevicePixelContentBoxSize } from 'ripple';
+
+export component App() {
+  let size = track([]);
+
+  <div>
+    <div
+      {ref bindDevicePixelContentBoxSize(size)}
+      style={{
+        border: '3px solid crimson',
+        padding: '10px',
+        width: '200px',
+        height: '80px',
+      }}
+    >
+      {'Device pixel content box'}
+    </div>
+    <pre>
+      {'Block size: '}
+      {@size[0]?.blockSize || 0}
+      {'px\\n'}
+      {'Inline size: '}
+      {@size[0]?.inlineSize || 0}
+      {'px'}
+    </pre>
+  </div>
+}`;
+
+const bind_inner_html_code = `import { track, bindInnerHTML } from 'ripple';
+
+export component App() {
+  let content = track('<strong>Bold text</strong>');
+
+  <div>
+    <div
+      contentEditable={true}
+      {ref bindInnerHTML(content)}
+      style={{
+        border: '1px solid gray',
+        padding: '10px',
+        minHeight: '50px',
+      }}
+    />
+    <p>{'Raw HTML:'}</p>
+    <pre>{@content}</pre>
+  </div>
+}`;
+
+const bind_inner_text_code = `import { track, bindInnerText } from 'ripple';
+
+export component App() {
+  let text = track('Edit me!');
+
+  <div>
+    <div
+      contentEditable={true}
+      {ref bindInnerText(text)}
+      style={{
+        border: '1px solid gray',
+        padding: '10px',
+        minHeight: '50px',
+      }}
+    />
+    <p>
+      {'Text content: '}
+      {@text}
+    </p>
+  </div>
+}`;
+
+const bind_text_content_code = `import { track, bindTextContent } from 'ripple';
+
+export component App() {
+  let text = track('Type here');
+
+  <div>
+    <div
+      contentEditable={true}
+      {ref bindTextContent(text)}
+      style={{
+        border: '1px solid gray',
+        padding: '10px',
+        minHeight: '50px',
+        whiteSpace: 'pre-wrap',
+      }}
+    />
+    <p>
+      {'Text content: '}
+      {@text}
+    </p>
+  </div>
+}`;
+
+const bind_node_code = `import { track, bindNode } from 'ripple';
+
+export component App() {
+  let divElement = track();
+
+  const handleFocus = () => {
+    if (@divElement) {
+      @divElement.focus();
+      @divElement.style.backgroundColor = 'lightblue';
+    }
+  };
+
+  <div>
+    <div
+      {ref bindNode(divElement)}
+      tabIndex={0}
+      style={{
+        border: '2px solid navy',
+        padding: '20px',
+        outline: 'none',
+      }}
+    >
+      {'Click the button to focus this div'}
+    </div>
+    <button onClick={handleFocus}>{'Focus Div'}</button>
+  </div>
+}`;
+
+const combining_bindings_code = `import { track, bindValue, bindClientWidth, bindNode } from 'ripple';
+
+export component App() {
+  let text = track('');
+  let width = track(0);
+  let inputElement = track();
+
+  const logInfo = () => {
+    console.log('Input:', @inputElement);
+    console.log('Value:', @text);
+    console.log('Width:', @width);
+  };
+
+  <div>
+    <input
+      type="text"
+      {ref bindValue(text)}
+      {ref bindClientWidth(width)}
+      {ref bindNode(inputElement)}
+      placeholder="Type something..."
+      style="width: 300px"
+    />
+    <p>
+      {'Text: '}
+      {@text}
+    </p>
+    <p>
+      {'Width: '}
+      {@width}
+      {'px'}
+    </p>
+    <button onClick={logInfo}>{'Log Info'}</button>
+  </div>
+}`;
 
 export component BindingsPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Bindings"
+		prevLink={{ href: '/docs/guide/styling', text: 'Styling' }}
+		nextLink={{ href: '/docs/comparison', text: 'Comparison to Other Frameworks' }}
+		{toc}
 		currentPath="/docs/guide/bindings"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="bindings">{'Bindings'}</DocHeading>
+
+		<p>
+			{'Bindings in Ripple provide a declarative way to synchronize DOM element properties with reactive state. Instead of manually handling events and updates, bindings create a two-way connection between your tracked variables and DOM elements.'}
+		</p>
+
+		<DocCallout type="info" title="Note">
+			<p>
+				{'All binding functions require a '}
+				<code>{'Tracked'}</code>
+				{' object as their argument. If you pass a non-tracked value, they will throw a '}
+				<code>{'TypeError'}</code>
+				{'.'}
+			</p>
+		</DocCallout>
+
+		<DocHeading level={2} id="form-bindings">{'Form Bindings'}</DocHeading>
+
+		<DocHeading level={3} id="bindvalue">{'bindValue'}</DocHeading>
+
+		<p>
+			{'The '}
+			<code>{'bindValue'}</code>
+			{' binding creates a two-way connection between a tracked variable and an input or select element\'s value.'}
+		</p>
+
+		<p>
+			<strong>{'For text inputs:'}</strong>
+		</p>
+
+		<DocCodeGroup code={bind_value_text_code} lang="ripple" />
+
+		<p>
+			<strong>{'For number inputs:'}</strong>
+		</p>
+
+		<DocCodeGroup code={bind_value_number_code} lang="ripple" />
+
+		<p>
+			<strong>{'For select elements:'}</strong>
+		</p>
+
+		<DocCodeGroup code={bind_value_select_code} lang="ripple" />
+
+		<p>
+			<strong>{'For multiple select:'}</strong>
+		</p>
+
+		<DocCodeGroup code={bind_value_multiple_select_code} lang="ripple" />
+
+		<DocHeading level={3} id="bindchecked">{'bindChecked'}</DocHeading>
+
+		<p>
+			{'The '}
+			<code>{'bindChecked'}</code>
+			{' binding synchronizes a checkbox\'s checked state with a tracked boolean value.'}
+		</p>
+
+		<DocCodeGroup code={bind_checked_code} lang="ripple" />
+
+		<DocCallout type="info" title="Note">
+			<ul>
+				<li>
+					<code>{'bindChecked'}</code>
+					{' only supports individual checkbox boolean binding. For checkbox groups or radio buttons, use '}
+					<code>{'bindGroup'}</code>
+					{' instead.'}
+				</li>
+				<li>
+					{'For '}
+					<code>{'radio'}</code>
+					{' inputs, use '}
+					<code>{'bindGroup'}</code>
+					{' instead of '}
+					<code>{'bindChecked'}</code>
+					{'.'}
+				</li>
+			</ul>
+		</DocCallout>
+
+		<DocHeading level={3} id="bindindeterminate">{'bindIndeterminate'}</DocHeading>
+
+		<p>
+			{'The '}
+			<code>{'bindIndeterminate'}</code>
+			{' binding synchronizes a checkbox\'s indeterminate state with a tracked boolean value. The indeterminate state is commonly used for "select all" checkboxes when only some (but not all) child items are selected.'}
+		</p>
+
+		<DocCodeGroup code={bind_indeterminate_code} lang="ripple" />
+
+		<DocCallout type="info" title="Note">
+			<ul>
+				<li>
+					{'The indeterminate state is purely visual and doesn\'t affect the checkbox\'s checked value.'}
+				</li>
+				<li>
+					{'You can combine '}
+					<code>{'bindIndeterminate'}</code>
+					{' with '}
+					<code>{'bindChecked'}</code>
+					{' on the same checkbox.'}
+				</li>
+				<li>
+					{'Common use case: "Select All" checkboxes when some (but not all) items are selected.'}
+				</li>
+			</ul>
+		</DocCallout>
+
+		<DocHeading level={3} id="bindgroup">{'bindGroup'}</DocHeading>
+
+		<p>
+			{'The '}
+			<code>{'bindGroup'}</code>
+			{' binding allows you to bind a group of checkboxes to an array or a group of radio buttons to a single value. This is essential for handling multiple selections or mutually exclusive choices.'}
+		</p>
+
+		<p>
+			<strong>{'For checkbox groups (array binding):'}</strong>
+		</p>
+
+		<DocCodeGroup code={bind_group_checkbox_code} lang="ripple" />
+
+		<p>
+			<strong>{'For radio button groups (value binding):'}</strong>
+		</p>
+
+		<DocCodeGroup code={bind_group_radio_code} lang="ripple" />
+
+		<DocCallout type="info" title="Note">
+			<ul>
+				<li>
+					<strong>{'Checkboxes'}</strong>
+					{': The tracked value should be an array. Checked boxes add their values to the array.'}
+				</li>
+				<li>
+					<strong>{'Radio buttons'}</strong>
+					{': The tracked value should be a single value matching one of the radio button values.'}
+				</li>
+				<li>
+					<strong>{'Static values only'}</strong>
+					{': The '}
+					<code>{'value'}</code>
+					{' attribute of inputs should be static. Dynamic/reactive value attributes are not supported. If you need to change input values dynamically, you must manually update both the tracked value and the checkbox states.'}
+				</li>
+				<li>
+					<strong>{'Per-binding instances'}</strong>
+					{': Ripple\'s '}
+					<code>{'bindGroup'}</code>
+					{' doesn\'t require inputs to be in the same component since it uses per-binding instance groups.'}
+				</li>
+			</ul>
+		</DocCallout>
+
+		<DocHeading level={3} id="bindfiles">{'bindFiles'}</DocHeading>
+
+		<p>
+			{'The '}
+			<code>{'bindFiles'}</code>
+			{' binding creates a two-way connection between a tracked variable and a file input\'s selected files. This allows you to read selected files and programmatically update the file input.'}
+		</p>
+
+		<DocCodeGroup code={bind_files_code} lang="ripple" />
+
+		<DocCallout type="info" title="Note">
+			<ul>
+				<li>
+					<code>{'FileList'}</code>
+					{' objects are read-only and cannot be modified directly.'}
+				</li>
+				<li>
+					{'To programmatically set files, create a new '}
+					<code>{'DataTransfer'}</code>
+					{' object and use its '}
+					<code>{'files'}</code>
+					{' property:'}
+					<DocCodeBlock code={bind_files_note_code} lang="js" />
+				</li>
+				<li>
+					{'To clear files, set the value to '}
+					<code>{'new DataTransfer().files'}</code>
+					{' (setting to '}
+					<code>{'null'}</code>
+					{' or '}
+					<code>{'undefined'}</code>
+					{' will not work for clearing).'}
+				</li>
+				<li>
+					<code>{'DataTransfer'}</code>
+					{' may not be available in server-side JS runtimes. Leave the tracked value uninitialized to prevent errors during SSR.'}
+				</li>
+			</ul>
+		</DocCallout>
+
+		<DocHeading level={2} id="dimension-bindings">{'Dimension Bindings'}</DocHeading>
+
+		<DocHeading level={3} id="bindclientwidth--bindclientheight">
+			{'bindClientWidth / bindClientHeight'}
+		</DocHeading>
+
+		<p>
+			{'These bindings track the inner dimensions of an element (excluding borders and scrollbars).'}
+		</p>
+
+		<DocCodeGroup code={bind_client_dimensions_code} lang="ripple" />
+
+		<DocHeading level={3} id="bindoffsetwidth--bindoffsetheight">
+			{'bindOffsetWidth / bindOffsetHeight'}
+		</DocHeading>
+
+		<p>{'These bindings track the full outer dimensions of an element (including borders).'}</p>
+
+		<DocCodeGroup code={bind_offset_dimensions_code} lang="ripple" />
+
+		<DocHeading level={2} id="resizeobserver-bindings">{'ResizeObserver Bindings'}</DocHeading>
+
+		<DocHeading level={3} id="bindcontentrect">{'bindContentRect'}</DocHeading>
+
+		<p>{'Tracks the element\'s content rectangle from the ResizeObserver API.'}</p>
+
+		<DocCodeGroup code={bind_content_rect_code} lang="ripple" />
+
+		<DocHeading level={3} id="bindcontentboxsize">{'bindContentBoxSize'}</DocHeading>
+
+		<p>{'Tracks the content box size (without padding or borders).'}</p>
+
+		<DocCodeGroup code={bind_content_box_size_code} lang="ripple" />
+
+		<DocHeading level={3} id="bindborderboxsize">{'bindBorderBoxSize'}</DocHeading>
+
+		<p>{'Tracks the border box size (including padding and borders).'}</p>
+
+		<DocCodeGroup code={bind_border_box_size_code} lang="ripple" />
+
+		<DocHeading level={3} id="binddevicepixelcontentboxsize">
+			{'bindDevicePixelContentBoxSize'}
+		</DocHeading>
+
+		<p>{'Tracks the content box size in device pixels (useful for high-DPI displays).'}</p>
+
+		<DocCodeGroup code={bind_device_pixel_code} lang="ripple" />
+
+		<DocHeading level={2} id="content-editable-bindings">{'Content Editable Bindings'}</DocHeading>
+
+		<DocHeading level={3} id="bindinnerhtml">{'bindInnerHTML'}</DocHeading>
+
+		<p>{'Binds to an element\'s innerHTML property, useful for rich text editors.'}</p>
+
+		<DocCodeGroup code={bind_inner_html_code} lang="ripple" />
+
+		<DocHeading level={3} id="bindinnertext">{'bindInnerText'}</DocHeading>
+
+		<p>{'Binds to an element\'s innerText property (text with line breaks, no HTML).'}</p>
+
+		<DocCodeGroup code={bind_inner_text_code} lang="ripple" />
+
+		<DocHeading level={3} id="bindtextcontent">{'bindTextContent'}</DocHeading>
+
+		<p>{'Binds to an element\'s textContent property (raw text, no formatting).'}</p>
+
+		<DocCodeGroup code={bind_text_content_code} lang="ripple" />
+
+		<DocHeading level={2} id="element-reference-binding">{'Element Reference Binding'}</DocHeading>
+
+		<DocHeading level={3} id="bindnode">{'bindNode'}</DocHeading>
+
+		<p>{'A convenient way to get a reference to a DOM element.'}</p>
+
+		<DocCodeGroup code={bind_node_code} lang="ripple" />
+
+		<DocHeading level={2} id="combining-multiple-bindings">
+			{'Combining Multiple Bindings'}
+		</DocHeading>
+
+		<p>
+			{'You can use multiple bindings on the same element by applying multiple '}
+			<code>{'{ref}'}</code>
+			{' attributes:'}
+		</p>
+
+		<DocCodeGroup code={combining_bindings_code} lang="ripple" />
+
+		<DocHeading level={2} id="best-practices">{'Best Practices'}</DocHeading>
+
+		<ol>
+			<li>
+				<strong>{'Always use tracked variables'}</strong>
+				{': All binding functions require '}
+				<code>{'Tracked'}</code>
+				{' objects created with '}
+				<code>{'track()'}</code>
+				{'.'}
+			</li>
+			<li>
+				<strong>{'Cleanup is automatic'}</strong>
+				{': Bindings automatically handle cleanup when elements are removed from the DOM.'}
+			</li>
+			<li>
+				<strong>{'Performance'}</strong>
+				{': Bindings use efficient observers (ResizeObserver for dimensions) with singleton patterns to minimize overhead.'}
+			</li>
+			<li>
+				<strong>{'Type safety'}</strong>
+				{': For number inputs, '}
+				<code>{'bindValue'}</code>
+				{' automatically converts values to numbers.'}
+			</li>
+			<li>
+				<strong>{'Multiple refs'}</strong>
+				{': You can apply multiple '}
+				<code>{'{ref}'}</code>
+				{' attributes to the same element for different bindings.'}
+			</li>
+		</ol>
 	</DocsLayout>
 }

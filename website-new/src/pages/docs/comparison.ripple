@@ -1,24 +1,58 @@
 import { DocsLayout } from '../../components/docs-layout.ripple';
+import { DocHeading } from '../../components/doc-heading.ripple';
 
-#server {
-	import { get_doc } from '../../lib/markdown.js';
-
-	export function load_doc() {
-		return get_doc('comparison');
-	}
-}
+const toc = [
+	{ href: '#vs-react', text: 'vs React', level: 2 },
+	{ href: '#vs-svelte', text: 'vs Svelte', level: 2 },
+	{ href: '#vs-solid', text: 'vs Solid', level: 2 },
+];
 
 export component ComparisonPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Comparison to other frameworks"
+		prevLink={{ href: '/docs/guide/bindings', text: 'Bindings' }}
+		nextLink={{ href: '/docs/best-practices', text: 'Best Practices' }}
+		{toc}
 		currentPath="/docs/comparison"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="comparison-to-other-frameworks">
+			{'Comparison to other frameworks'}
+		</DocHeading>
+
+		<DocHeading level={2} id="vs-react">{'vs React'}</DocHeading>
+
+		<ul>
+			<li>{'No JSX functions/returns - components use statement-based templates'}</li>
+			<li>
+				{'Built-in reactivity with '}
+				<code>{'track'}</code>
+				{' and '}
+				<code>{'@'}</code>
+				{' syntax instead of useState/useEffect'}
+			</li>
+			<li>{'Scoped CSS without CSS-in-JS libraries'}</li>
+			<li>{'No virtual DOM - fine-grained reactivity'}</li>
+		</ul>
+
+		<DocHeading level={2} id="vs-svelte">{'vs Svelte'}</DocHeading>
+
+		<ul>
+			<li>{'TypeScript-first approach'}</li>
+			<li>{'JSX-like syntax instead of HTML templates'}</li>
+			<li>{'Multiple components per file'}</li>
+			<li>{'Similar reactivity concepts but different syntax'}</li>
+		</ul>
+
+		<DocHeading level={2} id="vs-solid">{'vs Solid'}</DocHeading>
+
+		<ul>
+			<li>
+				{'Component definition with '}
+				<code>{'component'}</code>
+				{' keyword'}
+			</li>
+			<li>{'Built-in collections (RippleArray, RippleSet)'}</li>
+			<li>{'Different templating approach within component bodies'}</li>
+		</ul>
 	</DocsLayout>
 }

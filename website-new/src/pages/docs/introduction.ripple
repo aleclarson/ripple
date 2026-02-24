@@ -40,7 +40,6 @@ export component App() {
 export component IntroductionPage() {
 	<DocsLayout
 		title="Introduction"
-		editPath="docs/introduction.md"
 		nextLink={{ href: '/docs/quick-start', text: 'Quick Start' }}
 		{toc}
 		currentPath="/docs/introduction"

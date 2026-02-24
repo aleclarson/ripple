@@ -1,24 +1,40 @@
 import { DocsLayout } from '../../../components/docs-layout.ripple';
+import { DocHeading } from '../../../components/doc-heading.ripple';
+import { DocCodeGroup } from '../../../components/doc-code-block.ripple';
 
-#server {
-	import { get_doc } from '../../../lib/markdown.js';
+const head_example_code = `export component App() {
+  let curr_step = track(0);
 
-	export function load_doc() {
-		return get_doc('guide/head-management');
-	}
-}
+  <head>
+    <title>{\`Step \${@curr_step}\`}</title>
+  </head>
+
+  <button
+    onClick={() => {
+      @curr_step++;
+    }}
+  >
+    {'Next Step'}
+  </button>
+}`;
 
 export component HeadManagementPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Head Management"
+		prevLink={{ href: '/docs/guide/state-management', text: 'State Management' }}
+		nextLink={{ href: '/docs/guide/styling', text: 'Styling' }}
 		currentPath="/docs/guide/head-management"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="head-management-in-ripple">{'Head Management in Ripple'}</DocHeading>
+
+		<p>
+			{'To manage the content within '}
+			<code>{'<head>'}</code>
+			{', you may simply use the '}
+			<code>{'<head>'}</code>
+			{' tag directly within the component. It works with both static and reactive data.'}
+		</p>
+
+		<DocCodeGroup code={head_example_code} lang="ripple" />
 	</DocsLayout>
 }

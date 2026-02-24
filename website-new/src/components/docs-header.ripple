@@ -1,4 +1,41 @@
+import { track, effect } from 'ripple';
+import { SearchModal } from './search-modal.ripple';
+
 export component DocsHeader() {
+	let is_light = track(false);
+	let search_open = track(false);
+
+	effect(() => {
+		const current = document.documentElement.getAttribute('data-theme') === 'light';
+		@is_light = current;
+	});
+
+	effect(() => {
+		function on_keydown(e: KeyboardEvent) {
+			// BROKEN: Weird prettier bug - I wanted to keep ((e.metaKey || e.ctrlKey) && e.key === 'k')
+			// But formatting was removing the parentheses so implementation was broken
+			if (e.metaKey && e.key === 'k' || e.ctrlKey && e.key === 'k') {
+				e.preventDefault();
+				@search_open = !@search_open;
+			}
+		}
+		document.addEventListener('keydown', on_keydown);
+		return () => document.removeEventListener('keydown', on_keydown);
+	});
+
+	function toggle_theme() {
+		const new_is_light = !@is_light;
+		@is_light = new_is_light;
+		if (new_is_light) {
+			document.documentElement.setAttribute('data-theme', 'light');
+			localStorage.setItem('vitepress-theme-appearance', 'light');
+		} else {
+			document.documentElement.removeAttribute('data-theme');
+			localStorage.setItem('vitepress-theme-appearance', 'dark');
+		}
+	}
+
+	<SearchModal open={@search_open} onClose={() => (@search_open = false)} />
 	<header class="Header">
 		<div class="HeaderBar has-sidebar">
 			<div class="wrapper">
@@ -17,7 +54,11 @@ export component DocsHeader() {
 					<div class="content">
 						<div class="content-body">
 							<div class="HeaderBarSearch search">
-								<button type="button" class="DocSearch DocSearch-Button">
+								<button
+									type="button"
+									class="DocSearch DocSearch-Button"
+									onClick={() => (@search_open = true)}
+								>
 									<span class="DocSearch-Button-Container">
 										<svg class="DocSearch-Search-Icon" width="20" height="20" viewBox="0 0 20 20">
 											<path
@@ -51,10 +92,11 @@ export component DocsHeader() {
 							</nav>
 							<div class="HeaderBarAppearance appearance">
 								<button
-									class="Switch SwitchAppearance"
+									class={`Switch SwitchAppearance${@is_light ? ' light' : ''}`}
 									type="button"
 									role="switch"
-									aria-checked="false"
+									aria-checked={@is_light ? 'true' : 'false'}
+									onClick={toggle_theme}
 								>
 									<span class="check">
 										<span class="icon">
@@ -129,7 +171,7 @@ export component DocsHeader() {
 			height: 64px;
 			pointer-events: none;
 			white-space: nowrap;
-			background-color: #1b1b1f;
+			background-color: var(--vp-c-bg);
 		}
 
 		.wrapper {
@@ -169,7 +211,7 @@ export component DocsHeader() {
 				padding: 0 32px;
 				width: 272px;
 				height: 64px;
-				background-color: #161618;
+				background-color: var(--vp-c-bg-alt);
 			}
 		}
 
@@ -188,7 +230,7 @@ export component DocsHeader() {
 		}
 
 		.HeaderBarTitle.has-sidebar {
-			border-bottom: 1px solid #2e2e32;
+			border-bottom: 1px solid var(--vp-c-border);
 		}
 
 		.HeaderBarTitle .title {
@@ -199,13 +241,13 @@ export component DocsHeader() {
 			height: 64px;
 			font-size: 16px;
 			font-weight: 600;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 			transition: opacity 0.25s;
 			pointer-events: auto;
 		}
 
 		.HeaderBarTitle.has-sidebar .title {
-			border-bottom-color: #2e2e32;
+			border-bottom-color: var(--vp-c-border);
 		}
 
 		.Image.logo {
@@ -242,7 +284,7 @@ export component DocsHeader() {
 			justify-content: flex-end;
 			align-items: center;
 			height: 64px;
-			background-color: #1b1b1f;
+			background-color: var(--vp-c-bg);
 			pointer-events: auto;
 		}
 
@@ -269,18 +311,18 @@ export component DocsHeader() {
 			gap: 8px;
 			padding: 0 12px;
 			height: 40px;
-			background: #161618;
+			background: var(--vp-c-bg-alt);
 			border: 1px solid transparent;
 			border-radius: 8px;
 			cursor: pointer;
-			color: #98989f;
+			color: var(--vp-c-text-3);
 			font-size: 14px;
 			font-weight: 500;
 			transition: border-color 0.25s;
 		}
 
 		.DocSearch-Button:hover {
-			border-color: #3e95ff;
+			border-color: var(--vp-c-brand);
 		}
 
 		.DocSearch-Button-Container {
@@ -311,7 +353,7 @@ export component DocsHeader() {
 		.DocSearch-Button-Key {
 			font-size: 12px;
 			font-weight: 500;
-			color: #98989f;
+			color: var(--vp-c-text-3);
 			background: none;
 			border: none;
 			box-shadow: none;
@@ -332,13 +374,13 @@ export component DocsHeader() {
 			line-height: 64px;
 			font-size: 14px;
 			font-weight: 500;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 			transition: color 0.25s;
 		}
 
 		.HeaderBarMenuLink:hover,
 		.HeaderBarMenuLink.active {
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 		}
 
 		.menu + .appearance::before {
@@ -347,7 +389,7 @@ export component DocsHeader() {
 			margin-left: 8px;
 			width: 1px;
 			height: 24px;
-			background-color: #2e2e32;
+			background-color: var(--vp-c-border);
 			content: '';
 		}
 
@@ -362,7 +404,7 @@ export component DocsHeader() {
 			justify-content: center;
 			width: 40px;
 			height: 22px;
-			background: #2e2e32;
+			background: var(--vp-c-border);
 			border: none;
 			border-radius: 11px;
 			cursor: pointer;
@@ -383,7 +425,7 @@ export component DocsHeader() {
 			width: 16px;
 			height: 16px;
 			border-radius: 50%;
-			background-color: #1b1b1f;
+			background-color: var(--vp-c-bg);
 			display: flex;
 			align-items: center;
 			justify-content: center;
@@ -392,12 +434,27 @@ export component DocsHeader() {
 
 		.Switch .sun {
 			display: none;
+			width: 12px;
+			height: 12px;
+			color: var(--vp-c-text-1);
+		}
+
+		.Switch.light .sun {
+			display: block;
 		}
 
 		.Switch .moon {
 			width: 12px;
 			height: 12px;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
+		}
+
+		.Switch.light .moon {
+			display: none;
+		}
+
+		.Switch.light .icon {
+			transform: translateX(18px);
 		}
 
 		.appearance + .social-links::before {
@@ -406,7 +463,7 @@ export component DocsHeader() {
 			margin-left: 16px;
 			width: 1px;
 			height: 24px;
-			background-color: #2e2e32;
+			background-color: var(--vp-c-border);
 			content: '';
 		}
 
@@ -422,12 +479,12 @@ export component DocsHeader() {
 			justify-content: center;
 			width: 36px;
 			height: 36px;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 			transition: color 0.25s;
 		}
 
 		.SocialLink:hover {
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 		}
 
 		.social-icon {
@@ -438,7 +495,7 @@ export component DocsHeader() {
 		:global(.divider) {
 			width: 100%;
 			height: 1px;
-			background-color: #1b1b1f;
+			background-color: var(--vp-c-bg);
 		}
 
 		:global(.HeaderBar.has-sidebar .divider) {
@@ -454,7 +511,7 @@ export component DocsHeader() {
 		:global(.divider-line) {
 			width: 100%;
 			height: 1px;
-			background-color: #2e2e32;
+			background-color: var(--vp-c-border);
 		}
 
 		@media (max-width: 960px) {

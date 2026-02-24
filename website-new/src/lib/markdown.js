@@ -21,6 +21,13 @@ const docs_files = import.meta.glob('../../docs/**/*.md', {
 	eager: true,
 });
 
+// Import all .ripple doc pages for search indexing
+const ripple_doc_files = import.meta.glob('../pages/docs/**/*.ripple', {
+	query: '?raw',
+	import: 'default',
+	eager: true,
+});
+
 // Build a slug -> content map
 const DOCS_GLOB_PREFIX = '../../docs/';
 /** @type {Record<string, string>} */
@@ -225,6 +232,126 @@ function get_prev_next(slug) {
 			: null;
 
 	return { prev, next };
+}
+
+/**
+ * Extract text content from a .ripple file
+ * @param {string} content - Raw .ripple file content
+ * @returns {{ title: string, headings: string[], content: string } | null }
+ */
+function extract_ripple_content(content) {
+	if (!content) return null;
+
+	const headings = [];
+	let text_content = '';
+
+	const text_matches = content.matchAll(/\{'([^']*)'\}/g);
+	for (const match of text_matches) {
+		text_content += match[1] + ' ';
+	}
+
+	const template_string_matches = content.matchAll(/`([^`]+)`/g);
+	for (const match of template_string_matches) {
+		text_content += match[1] + ' ';
+	}
+
+	const heading_matches = content.matchAll(/<DocHeading[^>]*>\s*\{'([^']*)'\}/g);
+	for (const match of heading_matches) {
+		headings.push(match[1]);
+	}
+
+	const h1_matches = content.matchAll(/<h1[^>]*>\s*\{'([^']*)'\}/g);
+	for (const match of h1_matches) {
+		headings.push(match[1]);
+	}
+
+	const h2_matches = content.matchAll(/<h2[^>]*>\s*\{'([^']*)'\}/g);
+	for (const match of h2_matches) {
+		headings.push(match[1]);
+	}
+
+	const h3_matches = content.matchAll(/<h3[^>]*>\s*\{'([^']*)'\}/g);
+	for (const match of h3_matches) {
+		headings.push(match[1]);
+	}
+
+	let title = '';
+	const title_braces_match = content.match(/title\s*=\s*\{'([^']*)'\}/);
+	const title_quotes_match = content.match(/title="([^"]*)"/);
+	if (title_braces_match) {
+		title = title_braces_match[1];
+	} else if (title_quotes_match) {
+		title = title_quotes_match[1];
+	}
+
+	text_content = text_content
+		.replace(/\s+/g, ' ')
+		.replace(/[{}<>]/g, '')
+		.trim();
+
+	return { title, headings, content: text_content };
+}
+
+/**
+ * Get search index data for all docs
+ * @returns {Array<{ title: string, slug: string, headings: string[], content: string }>}
+ */
+export function get_search_index() {
+	/** @type {Array<{ title: string, slug: string, headings: string[], content: string }>} */
+	const index = [];
+
+	const ripple_prefix = '../pages/docs/';
+	const ripple_suffix = '.ripple';
+	for (const [file_path, raw_content] of Object.entries(ripple_doc_files)) {
+		const slug = file_path
+			.slice(ripple_prefix.length, -ripple_suffix.length)
+			.replace(/\/index$/, '');
+		const extracted = extract_ripple_content(/** @type {string} */ (raw_content));
+		if (extracted && extracted.title) {
+			index.push({
+				title: extracted.title,
+				slug,
+				headings: extracted.headings,
+				content: extracted.content,
+			});
+		}
+	}
+
+	for (const [slug, raw_content] of Object.entries(docs_map)) {
+		const { frontmatter, body } = parse_frontmatter(raw_content);
+		const title = frontmatter.title || slug.split('/').pop() || slug;
+
+		const headings = [];
+		const heading_regex = /^#{1,4}\s+(.+)$/gm;
+		let match;
+		while ((match = heading_regex.exec(body)) !== null) {
+			headings.push(
+				match[1]
+					.replace(/<[^>]+>/g, '')
+					.replace(/`([^`]*)`/g, '$1')
+					.trim(),
+			);
+		}
+
+		const content = body
+			.replace(/^#{1,6}\s+/gm, '')
+			.replace(/```[\s\S]*?```/g, '')
+			.replace(/`([^`]*)`/g, '$1')
+			.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+			.replace(/<[^>]+>/g, '')
+			.replace(/:::\s*\w+.*\n/g, '')
+			.replace(/^:::\s*$/gm, '')
+			.replace(/[*_~]+/g, '')
+			.replace(/\n{2,}/g, '\n')
+			.trim();
+
+		const existing = index.find((item) => item.slug === slug);
+		if (!existing) {
+			index.push({ title, slug, headings, content });
+		}
+	}
+
+	return index;
 }
 
 /**

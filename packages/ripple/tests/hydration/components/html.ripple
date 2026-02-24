@@ -140,7 +140,6 @@ export component DocLayout({
 export component HtmlWithServerData() {
 	const content = '<h1 id="intro" class="doc-h1">Introduction</h1><p>Ripple is a framework.</p>';
 	<DocLayout
-		editPath="docs/introduction.md"
 		nextLink={{ href: '/docs/quick-start', text: 'Quick Start' }}
 		toc={[
 			{ href: '#intro', text: 'Introduction' },
@@ -416,7 +415,7 @@ component DocsLayoutInner({
 
 export component DocsLayoutWithData() {
 	const htmlContent = '<h1>Title</h1><p>Content</p>';
-	<DocsLayoutInner editPath="docs/styling.md" nextLink={{ href: '/next', text: 'Next' }}>
+	<DocsLayoutInner nextLink={{ href: '/next', text: 'Next' }}>
 		<div class="doc-content">{html htmlContent}</div>
 	</DocsLayoutInner>
 }
@@ -498,7 +497,6 @@ component DocsLayoutExact({
 export component DocsLayoutExactWithData() {
 	const htmlContent = '<h1>Styling Guide</h1><p>Content</p>';
 	<DocsLayoutExact
-		editPath="docs/guide/styling.md"
 		prevLink={{ href: '/prev', text: 'Previous' }}
 		nextLink={{ href: '/next', text: 'Next' }}
 		toc={[

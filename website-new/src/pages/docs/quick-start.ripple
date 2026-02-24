@@ -1,24 +1,399 @@
 import { DocsLayout } from '../../components/docs-layout.ripple';
+import { DocHeading } from '../../components/doc-heading.ripple';
+import { DocCodeBlock } from '../../components/doc-code-block.ripple';
+import { DocCallout } from '../../components/doc-callout.ripple';
+import { DocBadge } from '../../components/doc-badge.ripple';
 
-#server {
-	import { get_doc } from '../../lib/markdown.js';
+const toc = [
+	{ href: '#try-ripple-online', text: 'Try Ripple Online', level: 2 },
+	{ href: '#installation', text: 'Installation', level: 2 },
+	{ href: '#using-the-create-ripple-cli', text: 'Using The create-ripple CLI', level: 3 },
+	{
+		href: '#clone-the-vite-based-basic-template',
+		text: 'Clone the Vite-based Basic Template',
+		level: 3,
+	},
+	{ href: '#editor-integration', text: 'Editor Integration', level: 2 },
+	{ href: '#vs-code', text: 'VS Code', level: 3 },
+	{ href: '#webstormintelij', text: 'WebStorm/IntelliJ', level: 3 },
+	{ href: '#sublime-text', text: 'Sublime Text', level: 3 },
+	{ href: '#textmate-bundle', text: 'TextMate bundle', level: 3 },
+	{ href: '#getting-help', text: 'Getting Help', level: 2 },
+	{ href: '#next-steps', text: 'Next Steps', level: 2 },
+];
 
-	export function load_doc() {
-		return get_doc('quick-start');
-	}
-}
+const create_ripple_code = `npm create ripple`;
+
+const clone_template_code = `npx degit Ripple-TS/ripple/templates/basic ripple-app
+
+cd ripple-app
+npm i
+npm run dev`;
+
+const install_ls_code = `npm install -g '@ripple-ts/language-server'`;
+
+const sublime_lsp_config = `{
+  "clients": {
+    "Ripple": {
+      "enabled": true,
+      "command": ["'@ripple-ts/language-server'", "--stdio"],
+      "selector": "source.ripple"
+    }
+  }
+}`;
 
 export component QuickStartPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Quick Start"
+		prevLink={{ href: '/docs/introduction', text: 'Introduction' }}
+		nextLink={{ href: '/docs/guide/application', text: 'Creating an Application' }}
+		{toc}
 		currentPath="/docs/quick-start"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="quick-start">{'Quick Start'}</DocHeading>
+
+		<DocHeading level={2} id="try-ripple-online">{'Try Ripple Online'}</DocHeading>
+
+		<p>
+			{'You can try Ripple directly in your browser on '}
+			<a
+				href="https://stackblitz.com/github/Ripple-TS/ripple/tree/main/templates/basic"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				{'StackBlitz'}
+			</a>
+			{'.'}
+		</p>
+
+		<DocHeading level={2} id="installation">{'Installation'}</DocHeading>
+
+		<DocHeading level={3} id="using-the-create-ripple-cli">
+			{'Using The '}
+			<DocBadge type="warning" text="Experimental" />
+			{' '}
+			<code>{'create-ripple'}</code>
+			{' CLI'}
+		</DocHeading>
+
+		<DocCodeBlock code={create_ripple_code} lang="sh" />
+
+		<DocHeading level={3} id="clone-the-vite-based-basic-template">
+			{'Clone the Vite-based Basic Template:'}
+		</DocHeading>
+
+		<DocCodeBlock code={clone_template_code} lang="sh" />
+
+		<DocHeading level={2} id="editor-integration">{'Editor Integration'}</DocHeading>
+
+		<DocHeading level={3} id="vs-code">{'VS Code'}</DocHeading>
+
+		<p>
+			{'Ripple maintains a Volar-based '}
+			<a
+				href="https://marketplace.visualstudio.com/items?itemName=Ripple-TS.ripple-ts-vscode-plugin"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				{'VSCode extension'}
+			</a>
+			{'.'}
+		</p>
+
+		<p>
+			{'It provides syntax highlighting for '}
+			<code>{'.ripple'}</code>
+			{' files, real-time diagnostics for compilation errors, typescript integration for type checking and autocompletion.'}
+		</p>
+
+		<p>
+			{'If you\'re using a fork of VSCode, the extension is also available on '}
+			<a
+				href="https://open-vsx.org/extension/ripple-ts/vscode-plugin"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				{'OpenVSX'}
+			</a>
+			{'.'}
+		</p>
+
+		<DocHeading level={3} id="webstormintelij">{'WebStorm/IntelliJ'}</DocHeading>
+
+		<p>
+			{'There isn\'t a dedicated plugin at the moment, but you can use the '}
+			<a href="#textmate-bundle">{'TextMate bundle'}</a>
+			{' to add syntax highlighting and the language server for diagnostics and autocompletion:'}
+		</p>
+
+		<ol>
+			<li>{'Install the Ripple language server:'}</li>
+		</ol>
+
+		<DocCodeBlock code={install_ls_code} lang="sh" />
+
+		<ol start={2}>
+			<li>
+				{'Install the '}
+				<a
+					href="https://plugins.jetbrains.com/plugin/23257-lsp4ij"
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{'LSP4IJ plugin'}
+				</a>
+				{'.'}
+			</li>
+			<li>
+				{'Go to '}
+				<code>{'Settings'}</code>
+				{' > '}
+				<code>{'Languages & Frameworks'}</code>
+				{' > '}
+				<code>{'Language Servers'}</code>
+				{'.'}
+			</li>
+			<li>
+				{'Click '}
+				<code>{'+'}</code>
+				{' to add a new language server.'}
+			</li>
+			<li>
+				{'Specify '}
+				<code>{'Ripple'}</code>
+				{' as the name and '}
+				<code>{'\'@ripple-ts/language-server\' --stdio'}</code>
+				{' as the command.'}
+			</li>
+			<li>
+				{'In the '}
+				<code>{'Mappings'}</code>
+				{' > '}
+				<code>{'File name patterns'}</code>
+				{', click '}
+				<code>{'+'}</code>
+				{' to add a new pattern.'}
+			</li>
+			<li>
+				{'Specify '}
+				<code>{'*.ripple'}</code>
+				{' as the pattern and '}
+				<code>{'ripple'}</code>
+				{' as the language id.'}
+			</li>
+		</ol>
+
+		<p>
+			{'You should see diagnostics and autocompletion in '}
+			<code>{'.ripple'}</code>
+			{' files now.'}
+		</p>
+
+		<DocHeading level={3} id="sublime-text">{'Sublime Text'}</DocHeading>
+
+		<p>
+			{'There isn\'t a dedicated plugin at the moment, but you can use the '}
+			<a href="#textmate-bundle">{'TextMate bundle'}</a>
+			{' to add syntax highlighting and the language server for diagnostics and autocompletion:'}
+		</p>
+
+		<ol>
+			<li>{'Install the Ripple language server:'}</li>
+		</ol>
+
+		<DocCodeBlock code={install_ls_code} lang="sh" />
+
+		<ol start={2}>
+			<li>
+				{'Press '}
+				<kbd>{'Ctrl/Cmd+Shift+P'}</kbd>
+				{', type '}
+				<code>{'Install Package Control'}</code>
+				{', and press '}
+				<kbd>{'Enter'}</kbd>
+				{'.'}
+			</li>
+			<li>{'Restart Sublime Text.'}</li>
+			<li>
+				{'Press '}
+				<kbd>{'Ctrl/Cmd+Shift+P'}</kbd>
+				{', type '}
+				<code>{'Upgrade Package'}</code>
+				{', and press '}
+				<kbd>{'Enter'}</kbd>
+				{'.'}
+			</li>
+			<li>
+				{'Type '}
+				<code>{'Package Control'}</code>
+				{' and press '}
+				<kbd>{'Enter'}</kbd>
+				{'.'}
+			</li>
+			<li>{'Restart Sublime Text.'}</li>
+			<li>
+				{'Press '}
+				<kbd>{'Ctrl/Cmd+Shift+P'}</kbd>
+				{', type '}
+				<code>{'Install Package'}</code>
+				{', and press '}
+				<kbd>{'Enter'}</kbd>
+				{'.'}
+			</li>
+			<li>
+				{'Type '}
+				<code>{'LSP'}</code>
+				{' and press '}
+				<kbd>{'Enter'}</kbd>
+				{'.'}
+			</li>
+			<li>{'Restart Sublime Text.'}</li>
+			<li>
+				{'Press '}
+				<kbd>{'Ctrl/Cmd+Shift+P'}</kbd>
+				{', type '}
+				<code>{'Preferences: LSP Settings'}</code>
+				{', and press '}
+				<kbd>{'Enter'}</kbd>
+				{'.'}
+			</li>
+			<li>{'Paste the following configuration:'}</li>
+		</ol>
+
+		<DocCodeBlock code={sublime_lsp_config} lang="json" />
+
+		<p>
+			{'You should see diagnostics and autocompletion in '}
+			<code>{'.ripple'}</code>
+			{' files now.'}
+		</p>
+
+		<DocHeading level={3} id="textmate-bundle">{'TextMate bundle'}</DocHeading>
+
+		<p>
+			{'Ripple also maintains a TextMate bundle that provides syntax highlighting for Ripple files in editors that support TextMate grammars, such as WebStorm/IntelliJ and Sublime Text.'}
+		</p>
+
+		<ol>
+			<li>
+				{'Create a directory named '}
+				<code>{'Ripple.tmbundle'}</code>
+				{'.'}
+			</li>
+			<li>
+				{'Create a directory named '}
+				<code>{'Syntaxes'}</code>
+				{' inside the '}
+				<code>{'Ripple.tmbundle'}</code>
+				{' directory.'}
+			</li>
+			<li>
+				{'Save the '}
+				<a
+					href="https://github.com/Ripple-TS/ripple/blob/main/assets/Ripple.tmbundle/Syntaxes/ripple.tmLanguage"
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					<code>{'ripple.tmLanguage'}</code>
+				</a>
+				{' file into the '}
+				<code>{'Syntaxes'}</code>
+				{' directory.'}
+			</li>
+			<li>
+				{'Install it:'}
+				<ul>
+					<li>
+						<strong>{'WebStorm/IntelliJ'}</strong>
+						{':'}
+						<ol>
+							<li>
+								{'Save the '}
+								<a
+									href="https://github.com/Ripple-TS/ripple/blob/main/assets/Ripple.tmbundle/info.plist"
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									<code>{'info.plist'}</code>
+								</a>
+								{' file into the '}
+								<code>{'Ripple.tmbundle'}</code>
+								{' directory.'}
+							</li>
+							<li>
+								{'Go to '}
+								<code>{'Settings'}</code>
+								{' > '}
+								<code>{'Editor'}</code>
+								{' > '}
+								<code>{'TextMate Bundles'}</code>
+								{', click the '}
+								<code>{'+'}</code>
+								{' icon, and select the '}
+								<code>{'Ripple.tmbundle'}</code>
+								{' directory.'}
+							</li>
+							<li>
+								{'All '}
+								<code>{'.ripple'}</code>
+								{' files should now have syntax highlighting.'}
+							</li>
+						</ol>
+					</li>
+					<li>
+						<strong>{'Sublime Text'}</strong>
+						{':'}
+						<ol>
+							<li>
+								{'Go to '}
+								<code>{'Preferences'}</code>
+								{' > '}
+								<code>{'Browse Packages'}</code>
+								{', and move the '}
+								<code>{'Ripple.tmbundle'}</code>
+								{' directory into the opened folder.'}
+							</li>
+							<li>
+								{'You should now be able to select '}
+								<code>{'Ripple'}</code>
+								{' in '}
+								<code>{'View'}</code>
+								{' > '}
+								<code>{'Syntax'}</code>
+								{'.'}
+							</li>
+						</ol>
+					</li>
+				</ul>
+			</li>
+		</ol>
+
+		<DocCallout type="info" title="Are you a Zed, NeoVim, or IntelliJ/WebStorm user?">
+			<p>{'Help us port the Ripple extension to your platforms!'}</p>
+		</DocCallout>
+
+		<DocHeading level={2} id="getting-help">{'Getting Help'}</DocHeading>
+
+		<p>
+			{'Try joining the '}
+			<a href="https://discord.gg/JBF2ySrh2W" target="_blank" rel="noopener noreferrer">
+				{'Discord server'}
+			</a>
+			{', or asking for help on our '}
+			<a
+				href="https://github.com/Ripple-TS/ripple/discussions"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				{'discussions board'}
+			</a>
+			{'.'}
+		</p>
+
+		<DocHeading level={2} id="next-steps">{'Next Steps'}</DocHeading>
+
+		<ul>
+			<li>{'Learn about reactivity/state management and caveats.'}</li>
+		</ul>
 	</DocsLayout>
 }

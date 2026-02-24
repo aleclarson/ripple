@@ -5,7 +5,6 @@ import { DocsFooter } from './docs-footer.ripple';
 export component DocsLayout({
 	children,
 	title = 'Docs',
-	editPath = '',
 	prevLink = null,
 	nextLink = null,
 	toc = [],
@@ -13,7 +12,6 @@ export component DocsLayout({
 }: {
 	children: any;
 	title?: string;
-	editPath?: string;
 	prevLink?: { href: string; text: string } | null;
 	nextLink?: { href: string; text: string } | null;
 	toc?: { href: string; text: string }[];
@@ -44,30 +42,6 @@ export component DocsLayout({
 									<children />
 								</div>
 							</article>
-							if (editPath) {
-								<div class="edit-link">
-									<a
-										href={`https://github.com/Ripple-TS/ripple/edit/main/website/${editPath}`}
-										target="_blank"
-										rel="noopener noreferrer"
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											class="edit-icon"
-										>
-											<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-											<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-										</svg>
-										{'Edit this page on GitHub'}
-									</a>
-								</div>
-							}
 							if (prevLink || nextLink) {
 								<nav class="prev-next">
 									if (prevLink) {
@@ -150,8 +124,8 @@ export component DocsLayout({
 				'Segoe UI',
 				Roboto,
 				sans-serif;
-			background: #1b1b1f;
-			color: rgba(255, 255, 245, 0.86);
+			background: var(--vp-c-bg);
+			color: var(--vp-c-text-1);
 			line-height: 1.7;
 			min-height: 100vh;
 			font-size: 16px;
@@ -166,18 +140,18 @@ export component DocsLayout({
 		}
 
 		:global(a) {
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 			text-decoration: none;
 		}
 
 		:global(a:hover) {
-			color: #5aa5ff;
+			color: var(--vp-c-brand-light);
 		}
 
 		/* Scrollbar styling */
 		:global(*) {
 			scrollbar-width: thin;
-			scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+			scrollbar-color: var(--vp-c-scrollbar) transparent;
 		}
 
 		:global(*::-webkit-scrollbar) {
@@ -190,12 +164,12 @@ export component DocsLayout({
 		}
 
 		:global(*::-webkit-scrollbar-thumb) {
-			background-color: rgba(255, 255, 255, 0.2);
+			background-color: var(--vp-c-scrollbar);
 			border-radius: 4px;
 		}
 
 		:global(*::-webkit-scrollbar-thumb:hover) {
-			background-color: rgba(255, 255, 255, 0.3);
+			background-color: var(--vp-c-scrollbar-hover);
 		}
 
 		.layout {
@@ -256,18 +230,18 @@ export component DocsLayout({
 			font-size: 32px;
 			line-height: 40px;
 			letter-spacing: -0.02em;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(h2),
 		.doc-content :global(.doc-h2) {
 			margin: 48px 0 16px;
-			border-top: 1px solid rgba(84, 84, 84, 0.48);
+			border-top: 1px solid var(--vp-c-divider);
 			padding-top: 24px;
 			font-size: 24px;
 			line-height: 32px;
 			letter-spacing: -0.02em;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.doc-h3) {
@@ -275,7 +249,7 @@ export component DocsLayout({
 			font-size: 20px;
 			line-height: 28px;
 			letter-spacing: -0.01em;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.doc-h4) {
@@ -283,7 +257,7 @@ export component DocsLayout({
 			font-size: 18px;
 			line-height: 24px;
 			letter-spacing: -0.01em;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.header-anchor) {
@@ -293,7 +267,7 @@ export component DocsLayout({
 			margin-left: -0.87em;
 			font-weight: 500;
 			user-select: none;
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 			opacity: 0;
 			transition:
 				color 0.25s,
@@ -353,8 +327,8 @@ export component DocsLayout({
 
 		.doc-content :global(:not(pre, h1, h2, h3, h4, h5, h6) > code) {
 			font-size: 0.9em;
-			color: #3e95ff;
-			background-color: rgba(101, 117, 133, 0.16);
+			color: var(--vp-c-brand);
+			background-color: var(--vp-c-code-bg);
 			border-radius: 4px;
 			padding: 3px 6px;
 			transition:
@@ -364,8 +338,8 @@ export component DocsLayout({
 
 		.doc-content :global(code) {
 			font-size: 14px;
-			color: rgba(235, 235, 245, 0.6);
-			background-color: rgba(101, 117, 133, 0.16);
+			color: var(--vp-c-text-2);
+			background-color: var(--vp-c-code-bg);
 			border-radius: 4px;
 			padding: 3px 6px;
 		}
@@ -375,13 +349,13 @@ export component DocsLayout({
 		}
 
 		.doc-content :global(a) {
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 			text-decoration: none;
 			transition: color 0.25s;
 		}
 
 		.doc-content :global(a:hover) {
-			color: #5aa5ff;
+			color: var(--vp-c-brand-light);
 		}
 
 		/* Custom blocks (info, tip, warning, danger) */
@@ -392,7 +366,7 @@ export component DocsLayout({
 			border: 1px solid transparent;
 			line-height: 24px;
 			font-size: 14px;
-			color: rgba(235, 235, 245, 0.6);
+			color: var(--vp-c-text-2);
 		}
 
 		.doc-content :global(.custom-block-title) {
@@ -401,33 +375,33 @@ export component DocsLayout({
 
 		.doc-content :global(.info),
 		.doc-content :global(.custom-block.info) {
-			background-color: rgba(101, 117, 133, 0.16);
-			color: rgba(255, 255, 245, 0.86);
+			background-color: var(--vp-c-code-bg);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.custom-block.info a),
 		.doc-content :global(.custom-block.info code) {
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 		}
 
 		.doc-content :global(.custom-block.info a:hover),
 		.doc-content :global(.custom-block.info a:hover > code) {
-			color: #5aa5ff;
+			color: var(--vp-c-brand-light);
 		}
 
 		.doc-content :global(.tip) {
-			background-color: rgba(66, 184, 131, 0.16);
-			color: rgba(255, 255, 245, 0.86);
+			background-color: var(--vp-c-tip-bg);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.warning) {
-			background-color: rgba(234, 179, 8, 0.16);
-			color: rgba(255, 255, 245, 0.86);
+			background-color: var(--vp-c-warning-bg);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.danger) {
-			background-color: rgba(234, 57, 67, 0.16);
-			color: rgba(255, 255, 245, 0.86);
+			background-color: var(--vp-c-danger-bg);
+			color: var(--vp-c-text-1);
 		}
 
 		/* Code blocks */
@@ -437,9 +411,9 @@ export component DocsLayout({
 		}
 
 		.doc-content :global(.tabs) {
-			background: #161618;
+			background: var(--vp-c-bg-alt);
 			border-radius: 8px 8px 0 0;
-			border-bottom: 1px solid rgba(84, 84, 84, 0.48);
+			border-bottom: 1px solid var(--vp-c-divider);
 		}
 
 		.doc-content :global(.tab) {
@@ -447,7 +421,7 @@ export component DocsLayout({
 			height: 48px;
 			border: none;
 			background: none;
-			color: rgba(235, 235, 245, 0.6);
+			color: var(--vp-c-text-2);
 			font-size: 14px;
 			font-weight: 500;
 			cursor: pointer;
@@ -455,7 +429,7 @@ export component DocsLayout({
 		}
 
 		.doc-content :global(.tab.active) {
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.tab.active)::after {
@@ -465,18 +439,18 @@ export component DocsLayout({
 			left: 8px;
 			right: 8px;
 			height: 2px;
-			background: #3e95ff;
+			background: var(--vp-c-brand);
 		}
 
 		.doc-content :global(.blocks) {
-			background: #161618;
+			background: var(--vp-c-bg-alt);
 			border-radius: 0 0 8px 8px;
 		}
 
 		.doc-content :global([class*='language-']) {
 			position: relative;
 			margin: 16px 0;
-			background-color: #161618;
+			background-color: var(--vp-c-bg-alt);
 			border-radius: 8px;
 			overflow-x: auto;
 		}
@@ -493,7 +467,7 @@ export component DocsLayout({
 			width: 40px;
 			height: 40px;
 			border-radius: 8px;
-			border: 1px solid rgba(84, 84, 84, 0.48);
+			border: 1px solid var(--vp-c-divider);
 			background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' height='20' width='20' stroke='rgba(128,128,128,1)' stroke-width='2' viewBox='0 0 24 24'%3E%3Crect width='8' height='4' x='8' y='2' rx='1' ry='1'/%3E%3Cpath d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/%3E%3C/svg%3E")
 				no-repeat center;
 			cursor: pointer;
@@ -513,7 +487,7 @@ export component DocsLayout({
 			z-index: 2;
 			font-size: 12px;
 			font-weight: 500;
-			color: rgba(235, 235, 245, 0.38);
+			color: var(--vp-c-text-3);
 			transition: opacity 0.25s;
 		}
 
@@ -532,7 +506,7 @@ export component DocsLayout({
 			font-family: 'Fira Code', monospace;
 			font-size: 13px;
 			line-height: 1.7;
-			color: #e1e4e8;
+			color: var(--vp-c-code-text);
 			background: transparent;
 			padding: 0 24px;
 			border-radius: 0;
@@ -566,19 +540,19 @@ export component DocsLayout({
 		}
 
 		.doc-content :global(.badge.warning) {
-			background-color: rgba(234, 179, 8, 0.16);
+			background-color: var(--vp-c-warning-bg);
 			color: #eab308;
 		}
 
 		.doc-content :global(.badge.info) {
-			background-color: rgba(101, 117, 133, 0.16);
-			color: rgba(235, 235, 245, 0.6);
+			background-color: var(--vp-c-code-bg);
+			color: var(--vp-c-text-2);
 		}
 
 		/* Plugin tabs */
 		.doc-content :global(.plugin-tabs) {
 			margin: 16px 0;
-			background-color: #202127;
+			background-color: var(--vp-c-bg-soft);
 			border-radius: 8px;
 		}
 
@@ -597,7 +571,7 @@ export component DocsLayout({
 			bottom: 0;
 			left: 0;
 			height: 2px;
-			background-color: #2e2e32;
+			background-color: var(--vp-c-border);
 		}
 
 		.doc-content :global(.plugin-tabs--tab) {
@@ -608,7 +582,7 @@ export component DocsLayout({
 			border: none;
 			border-bottom: 2px solid transparent;
 			background: none;
-			color: #98989f;
+			color: var(--vp-c-text-3);
 			font-size: 14px;
 			font-weight: 500;
 			cursor: pointer;
@@ -617,11 +591,11 @@ export component DocsLayout({
 		}
 
 		.doc-content :global(.plugin-tabs--tab:hover) {
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.plugin-tabs--tab[aria-selected='true']) {
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.doc-content :global(.plugin-tabs--tab[aria-selected='true']::after) {
@@ -633,7 +607,7 @@ export component DocsLayout({
 			z-index: 1;
 			height: 2px;
 			border-radius: 2px;
-			background-color: #3e95ff;
+			background-color: var(--vp-c-brand);
 		}
 
 		.doc-content :global(.plugin-tabs--content) {
@@ -651,7 +625,7 @@ export component DocsLayout({
 		.doc-content :global(.plugin-tabs--content [class*='language-']) {
 			position: relative;
 			overflow-x: auto;
-			background-color: #1b1b1f;
+			background-color: var(--vp-c-bg);
 			border-radius: 8px;
 		}
 
@@ -662,7 +636,7 @@ export component DocsLayout({
 			width: 40px;
 			height: 40px;
 			border-radius: 8px;
-			border: 1px solid #2e2e32;
+			border: 1px solid var(--vp-c-border);
 			background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' height='20' width='20' stroke='rgba(128,128,128,1)' stroke-width='2' viewBox='0 0 24 24'%3E%3Crect width='8' height='4' x='8' y='2' rx='1' ry='1'/%3E%3Cpath d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/%3E%3C/svg%3E")
 				no-repeat center;
 			cursor: pointer;
@@ -682,7 +656,7 @@ export component DocsLayout({
 			z-index: 2;
 			font-size: 12px;
 			font-weight: 500;
-			color: rgba(235, 235, 245, 0.38);
+			color: var(--vp-c-text-3);
 			transition: opacity 0.25s;
 		}
 
@@ -715,35 +689,10 @@ export component DocsLayout({
 			min-width: 100%;
 			line-height: 1.7;
 			font-size: 0.875em;
-			color: #98989f;
+			color: var(--vp-c-text-3);
 			background: transparent;
 			white-space: pre;
 			font-weight: 400;
-		}
-
-		.edit-link {
-			padding: 32px 0;
-			border-top: 1px solid #2e2e32;
-			margin-top: 32px;
-		}
-
-		.edit-link a {
-			display: inline-flex;
-			align-items: center;
-			gap: 8px;
-			font-size: 14px;
-			font-weight: 500;
-			color: #3e95ff;
-			transition: color 0.25s;
-		}
-
-		.edit-link a:hover {
-			color: #5aa5ff;
-		}
-
-		.edit-icon {
-			width: 18px;
-			height: 18px;
 		}
 
 		.prev-next {
@@ -751,19 +700,19 @@ export component DocsLayout({
 			grid-template-columns: 1fr 1fr;
 			gap: 16px;
 			padding: 32px 0;
-			border-top: 1px solid #2e2e32;
+			border-top: 1px solid var(--vp-c-border);
 		}
 
 		.pager {
 			display: block;
 			padding: 11px 16px 13px;
-			border: 1px solid #2e2e32;
+			border: 1px solid var(--vp-c-border);
 			border-radius: 8px;
 			transition: border-color 0.25s;
 		}
 
 		.pager:hover {
-			border-color: #3e95ff;
+			border-color: var(--vp-c-brand);
 			text-decoration: none;
 		}
 
@@ -775,7 +724,7 @@ export component DocsLayout({
 			display: block;
 			font-size: 12px;
 			font-weight: 500;
-			color: rgba(235, 235, 245, 0.6);
+			color: var(--vp-c-text-2);
 			line-height: 20px;
 		}
 
@@ -783,7 +732,7 @@ export component DocsLayout({
 			display: block;
 			font-size: 14px;
 			font-weight: 500;
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 			line-height: 20px;
 			transition: color 0.25s;
 		}
@@ -804,7 +753,10 @@ export component DocsLayout({
 			z-index: 10;
 			width: 224px;
 			height: 32px;
-			background: linear-gradient(transparent, #1b1b1f 70%);
+			background: linear-gradient(
+				var(--vp-c-aside-gradient-start),
+				var(--vp-c-aside-gradient-end) 70%
+			);
 			pointer-events: none;
 		}
 
@@ -846,7 +798,7 @@ export component DocsLayout({
 
 		.outline-content {
 			position: relative;
-			border-left: 1px solid #2e2e32;
+			border-left: 1px solid var(--vp-c-border);
 			padding-left: 16px;
 			font-size: 13px;
 			font-weight: 500;
@@ -861,7 +813,7 @@ export component DocsLayout({
 			width: 2px;
 			border-radius: 2px;
 			height: 18px;
-			background-color: #3e95ff;
+			background-color: var(--vp-c-brand);
 			transition:
 				top 0.25s cubic-bezier(0, 1, 0.5, 1),
 				background-color 0.5s,
@@ -872,7 +824,7 @@ export component DocsLayout({
 			line-height: 32px;
 			font-size: 14px;
 			font-weight: 600;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.DocumentOutlineItem {
@@ -891,7 +843,7 @@ export component DocsLayout({
 			line-height: 32px;
 			font-size: 14px;
 			font-weight: 400;
-			color: #98989f;
+			color: var(--vp-c-text-3);
 			white-space: nowrap;
 			overflow: hidden;
 			text-overflow: ellipsis;
@@ -900,7 +852,7 @@ export component DocsLayout({
 		}
 
 		.outline-link:hover {
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 			transition: color 0.25s;
 		}
 

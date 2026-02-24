@@ -1,24 +1,323 @@
 import { DocsLayout } from '../../../components/docs-layout.ripple';
+import { DocHeading } from '../../../components/doc-heading.ripple';
+import { DocCodeGroup, DocCodeBlock } from '../../../components/doc-code-block.ripple';
+import { DocCallout } from '../../../components/doc-callout.ripple';
+import { DocBadge } from '../../../components/doc-badge.ripple';
 
-#server {
-	import { get_doc } from '../../../lib/markdown.js';
+const toc = [
+	{ href: '#if-statements', text: 'If Statements', level: 2 },
+	{ href: '#early-return-guard-clauses', text: 'Early Return (Guard Clauses)', level: 2 },
+	{ href: '#switch-statements', text: 'Switch Statements', level: 2 },
+	{ href: '#for-statements', text: 'For Statements', level: 2 },
+	{ href: '#try-statements', text: 'Try Statements', level: 2 },
+	{ href: '#dynamic-elements', text: 'Dynamic Elements', level: 2 },
+	{ href: '#async-suspense-boundaries', text: 'Async (Suspense Boundaries)', level: 2 },
+];
 
-	export function load_doc() {
-		return get_doc('guide/control-flow');
-	}
+const if_example_code = `export component Truthy({ x }) {
+  <div>
+    if (x) {
+      <span>{'x is truthy'}</span>
+    } else {
+      <span>{'x is falsy'}</span>
+    }
+  </div>
+}`;
+
+const early_return_code = `import { track } from 'ripple';
+
+export component AuthGate() {
+  let is_logged_in = track(false);
+
+  if (!@is_logged_in) {
+    <p>{'Please sign in.'}</p>
+    return;
+  }
+
+  <h1>{'Dashboard'}</h1>
+  <p>{'Private content'}</p>
+}`;
+
+const switch_example_code = `export component StatusIndicator({ status }) {
+  <div>
+    switch (status) {
+      case: 'init':
+        // fall-through to the next
+      case 'loading':
+        <p>{'Loading...'}</p>
+        break;
+      case 'success':
+        <p>{'Success!'}</p>
+        break;
+      case 'error':
+        <p>{'Error!'}</p>
+        break;
+      default:
+        <p>{'Unknown status'}</p>
+    }
+  </div>
+}`;
+
+const switch_reactive_code = `import { track } from 'ripple';
+
+export component InteractiveStatus() {
+  let status = track('loading');
+
+  <button onClick={() => (@status = 'success')}>{'Success'}</button>
+  <button onClick={() => (@status = 'error')}>{'Error'}</button>
+
+  <div>
+    switch (@status) {
+      case 'init':
+        <p>{'Init'}</p>
+      // fall-through to the next
+      case 'loading':
+        <p>{'Loading...'}</p>
+        break;
+      case 'success':
+        <p>{'Success!'}</p>
+        break;
+      case 'error':
+        <p>{'Error!'}</p>
+        break;
+      default:
+        <p>{'Unknown status'}</p>
+    }
+  </div>
+}`;
+
+const for_example_code = `component ListView({ title, items }) {
+  <h2>{title}</h2>
+  <ul>
+    for (const item of items) {
+      <li>{item.text}</li>
+    }
+  </ul>
 }
 
-export component ControlFlowPage() {
-	const doc = #server.load_doc();
+// usage
+export default component App() {
+  <ListView
+    title="My List"
+    items={[
+      { text: 'Item 1' },
+      { text: 'Item 2' },
+      { text: 'Item 3' },
+    ]}
+  />
+}`;
 
+const for_index_code = `for (const item of items; index i) {
+  <div>
+    {item.label}
+    {' at index '}
+    {i}
+  </div>
+}`;
+
+const for_key_code = `for (const item of items; index i; key item.id) {
+  <div>
+    {item.label}
+    {' at index '}
+    {i}
+  </div>
+}`;
+
+const for_reactive_array_code = `import { TrackedArray } from 'ripple';
+
+export component Numbers() {
+  const array = new TrackedArray(1, 2, 3);
+
+  for (const item of array; index i) {
+    <div>
+      {item}
+      {' at index '}
+      {i}
+    </div>
+  }
+
+  <button onClick={() => array.push(array.length + 1)}>{'Add Item'}</button>
+}`;
+
+const try_example_code = `import { reportError } from 'some-library';
+
+export component ErrorBoundary() {
+  <div>
+    try {
+      <ComponentThatFails />
+    } catch (e) {
+      reportError(e);
+
+      <div>{'An error occurred! ' + e.message}</div>
+    }
+  </div>
+}`;
+
+const dynamic_elements_code = `export component App() {
+  let tag = track('div');
+
+  <@tag class="dynamic">{'Hello World'}</@tag>
+  <button onClick={() => (@tag = @tag === 'div' ? 'span' : 'div')}>
+    {'Toggle Element'}
+  </button>
+}`;
+
+const async_suspense_code = `export component SuspenseBoundary() {
+  try {
+    <AsyncComponent />
+  } pending {
+    <p>{'Loading...'}</p> // fallback
+  }
+}`;
+
+export component ControlFlowPage() {
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Control Flow"
+		prevLink={{ href: '/docs/guide/components', text: 'Components' }}
+		nextLink={{ href: '/docs/guide/reactivity', text: 'Reactivity' }}
+		{toc}
 		currentPath="/docs/guide/control-flow"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="control-flow">{'Control Flow'}</DocHeading>
+
+		<DocHeading level={2} id="if-statements">{'If Statements'}</DocHeading>
+
+		<p>
+			{'If blocks work seamlessly with Ripple\'s templating language, you can put them inside the JSX-like statements, making control-flow far easier to read and reason with.'}
+		</p>
+
+		<DocCodeGroup code={if_example_code} lang="ripple" />
+
+		<DocHeading level={2} id="early-return-guard-clauses">
+			{'Early Return (Guard Clauses)'}
+		</DocHeading>
+
+		<p>
+			{'You can pair '}
+			<code>{'if'}</code>
+			{' blocks with '}
+			<code>{'return;'}</code>
+			{' to short-circuit the rest of the component body once a guard branch is hit.'}
+		</p>
+
+		<DocCodeGroup code={early_return_code} lang="ripple" />
+
+		<p>
+			<code>{'return'}</code>
+			{' in components is only valid as '}
+			<code>{'return;'}</code>
+			{'. Returning a value (including templates) is invalid.'}
+		</p>
+
+		<DocHeading level={2} id="switch-statements">{'Switch Statements'}</DocHeading>
+
+		<p>
+			{'Switch statements let you conditionally render content based on a value. They work with both static and reactive values.'}
+		</p>
+
+		<DocCodeGroup code={switch_example_code} lang="ripple" />
+
+		<p>{'You can also use reactive values with switch statements.'}</p>
+
+		<DocCodeGroup code={switch_reactive_code} lang="ripple" />
+
+		<DocHeading level={2} id="for-statements">{'For Statements'}</DocHeading>
+
+		<p>
+			{'You can render collections using a '}
+			<code>{'for...of'}</code>
+			{' loop.'}
+		</p>
+
+		<DocCodeGroup code={for_example_code} lang="ripple" />
+
+		<p>
+			{'The '}
+			<code>{'for...of'}</code>
+			{' loop has also a built-in support for accessing the loops numerical index. The '}
+			<code>{'label'}</code>
+			{' index declares a variable that will used to assign the loop\'s index.'}
+		</p>
+
+		<DocCodeBlock code={for_index_code} lang="ripple" />
+
+		<p>
+			{'You can also provide a '}
+			<code>{'key'}</code>
+			{' for efficient list updates and reconciliation:'}
+		</p>
+
+		<DocCodeBlock code={for_key_code} lang="ripple" />
+
+		<p>
+			<strong>{'Key Usage Guidelines:'}</strong>
+		</p>
+
+		<ul>
+			<li>
+				<strong>
+					{'Arrays with '}
+					<code>{'#{}'}</code>
+					{' objects'}
+				</strong>
+				{': Keys are usually unnecessary - object identity and reactivity handle updates automatically. Identity-based loops are more efficient with less bookkeeping.'}
+			</li>
+			<li>
+				<strong>{'Arrays with plain objects'}</strong>
+				{': Keys are needed when object reference isn\'t sufficient for identification. Use stable identifiers: '}
+				<code>{'key item.id'}</code>
+				{'.'}
+			</li>
+		</ul>
+
+		<p>{'You can use Ripple\'s reactive arrays to easily compose contents of an array.'}</p>
+
+		<DocCodeGroup code={for_reactive_array_code} lang="ripple" />
+
+		<p>
+			{'Clicking the '}
+			<code>{'<button>'}</code>
+			{' will create a new item.'}
+		</p>
+
+		<DocCallout type="info" title="Note">
+			<p>
+				<code>{'for...of'}</code>
+				{' loops inside components must contain either dom elements or components. Otherwise, the loop can be run inside an '}
+				<code>{'effect'}</code>
+				{' or function.'}
+			</p>
+		</DocCallout>
+
+		<DocHeading level={2} id="try-statements">{'Try Statements'}</DocHeading>
+
+		<p>
+			{'Try blocks work to build the foundation for '}
+			<strong>{'error boundaries'}</strong>
+			{', when the runtime encounters an error in the '}
+			<code>{'try'}</code>
+			{' block, you can easily render a fallback in the '}
+			<code>{'catch'}</code>
+			{' block.'}
+		</p>
+
+		<DocCodeBlock code={try_example_code} lang="ripple" />
+
+		<DocHeading level={2} id="dynamic-elements">{'Dynamic Elements'}</DocHeading>
+
+		<p>
+			{'You can render dynamic HTML elements by storing the tag name in a tracked variable and using the '}
+			<code>{'<@tagName>'}</code>
+			{' syntax:'}
+		</p>
+
+		<DocCodeBlock code={dynamic_elements_code} lang="ripple" />
+
+		<DocHeading level={2} id="async-suspense-boundaries">
+			{'Async (Suspense Boundaries) '}
+			<DocBadge type="warning" text="Experimental" />
+		</DocHeading>
+
+		<DocCodeBlock code={async_suspense_code} lang="ripple" />
 	</DocsLayout>
 }

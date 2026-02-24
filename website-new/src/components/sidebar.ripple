@@ -129,7 +129,7 @@ export component Sidebar({ currentPath = '/docs/introduction' }: { currentPath?:
 			padding: 32px 32px 96px;
 			width: 272px;
 			max-width: 100%;
-			background-color: #161618;
+			background-color: var(--vp-c-bg-alt);
 			overflow-x: hidden;
 			overflow-y: auto;
 			overscroll-behavior: contain;
@@ -156,7 +156,7 @@ export component Sidebar({ currentPath = '/docs/introduction' }: { currentPath?:
 				margin-right: -32px;
 				margin-left: -32px;
 				height: 64px;
-				background-color: #161618;
+				background-color: var(--vp-c-bg-alt);
 			}
 		}
 
@@ -186,7 +186,7 @@ export component Sidebar({ currentPath = '/docs/introduction' }: { currentPath?:
 		}
 
 		.group + .group {
-			border-top: 1px solid #2e2e32;
+			border-top: 1px solid var(--vp-c-border);
 		}
 
 		@media (min-width: 1440px) {
@@ -291,7 +291,7 @@ component SidebarGroup({
 			line-height: 24px;
 			font-size: 14px;
 			font-weight: 700;
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 			transition: color 0.25s;
 		}
 
@@ -302,18 +302,18 @@ component SidebarGroup({
 			margin-right: -7px;
 			width: 32px;
 			height: 32px;
-			color: rgba(235, 235, 245, 0.6);
+			color: var(--vp-c-text-2);
 			cursor: pointer;
 			transition: color 0.25s;
 			flex-shrink: 0;
 		}
 
 		.item:hover .caret {
-			color: rgba(235, 235, 245, 0.78);
+			color: var(--vp-c-text-1);
 		}
 
 		.item:hover .caret:hover {
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.caret-icon {
@@ -387,7 +387,7 @@ component SidebarItem({
 		}
 
 		.SidebarItem.is-active > .item > .indicator {
-			background-color: #3e95ff;
+			background-color: var(--vp-c-brand);
 		}
 
 		.link {
@@ -402,20 +402,20 @@ component SidebarItem({
 			line-height: 24px;
 			font-size: 14px;
 			font-weight: 500;
-			color: rgba(235, 235, 245, 0.6);
+			color: var(--vp-c-text-2);
 			transition: color 0.25s;
 		}
 
 		.SidebarItem.is-link > .item > .link:hover .text {
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 		}
 
 		.SidebarItem.has-active > .item > .link > .text {
-			color: rgba(255, 255, 245, 0.86);
+			color: var(--vp-c-text-1);
 		}
 
 		.SidebarItem.is-active > .item > .link > .text {
-			color: #3e95ff;
+			color: var(--vp-c-brand);
 		}
 
 		.doc-external-link-icon::after {

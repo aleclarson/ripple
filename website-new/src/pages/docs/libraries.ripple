@@ -1,24 +1,50 @@
 import { DocsLayout } from '../../components/docs-layout.ripple';
+import { DocHeading } from '../../components/doc-heading.ripple';
+import { DocCallout } from '../../components/doc-callout.ripple';
 
-#server {
-	import { get_doc } from '../../lib/markdown.js';
-
-	export function load_doc() {
-		return get_doc('libraries');
-	}
-}
+const toc = [
+	{ href: '#router', text: 'Router', level: 2 },
+	{ href: '#component-library', text: 'Component Library', level: 2 },
+];
 
 export component LibrariesPage() {
-	const doc = #server.load_doc();
-
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Libraries"
+		prevLink={{ href: '/docs/best-practices', text: 'Best Practices' }}
+		nextLink={{ href: '/docs/troubleshooting', text: 'Troubleshooting' }}
+		{toc}
 		currentPath="/docs/libraries"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="libraries">{'Libraries'}</DocHeading>
+
+		<DocCallout type="warning" title="Warning">
+			<p>
+				{'While we encourage users to build and explore use-cases with Ripple, please do not rely on Ripple for production! Ripple is not production ready, and may have breaking changes at any moment.'}
+			</p>
+		</DocCallout>
+
+		<DocHeading level={2} id="router">{'Router'}</DocHeading>
+
+		<ul>
+			<li>
+				<a
+					href="https://github.com/WebEferen/ripplejs-router"
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{'https://github.com/WebEferen/ripplejs-router'}
+				</a>
+			</li>
+		</ul>
+
+		<DocHeading level={2} id="component-library">{'Component Library'}</DocHeading>
+
+		<ul>
+			<li>
+				<a href="https://github.com/anubra266/zag-ripple" target="_blank" rel="noopener noreferrer">
+					{'https://github.com/anubra266/zag-ripple'}
+				</a>
+			</li>
+		</ul>
 	</DocsLayout>
 }

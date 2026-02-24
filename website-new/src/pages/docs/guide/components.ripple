@@ -1,24 +1,207 @@
 import { DocsLayout } from '../../../components/docs-layout.ripple';
+import { DocHeading } from '../../../components/doc-heading.ripple';
+import { DocCodeBlock, DocCodeGroup } from '../../../components/doc-code-block.ripple';
+import { DocCallout } from '../../../components/doc-callout.ripple';
 
-#server {
-	import { get_doc } from '../../../lib/markdown.js';
+const toc = [
+	{ href: '#lifecycle', text: 'Lifecycle', level: 2 },
+	{ href: '#children', text: 'Children', level: 2 },
+	{ href: '#named-children', text: 'Named Children', level: 3 },
+	{
+		href: '#example-card-component-using-child-composition',
+		text: 'Example: Card Component Using Child Composition',
+		level: 2,
+	},
+	{ href: '#reactive-props', text: 'Reactive Props', level: 2 },
+	{ href: '#prop-shorthands', text: 'Prop Shorthands', level: 2 },
+	{ href: '#portal-component', text: 'Portal Component', level: 2 },
+];
 
-	export function load_doc() {
-		return get_doc('guide/components');
-	}
+const children_code = `import type { Component } from 'ripple';
+
+component Card(props: { children: Component }) {
+  <div class="card">
+    <props.children />
+  </div>
 }
 
-export component ComponentsPage() {
-	const doc = #server.load_doc();
+export component App() {
+  // Use implicitly...
+  <Card>
+    <p>{'Card content here'}</p>
+  </Card>
 
+  // or explicitly!
+  <Card>
+    component children() {
+      <p>{'Card content here'}</p>
+    }
+  </Card>
+}`;
+
+const named_children_code = `component Composite({ PropComp, InlineComp }) {
+  <PropComp />
+  <InlineComp />
+}
+
+component Separate() {
+  <p>{\`I'm a separate component.\`}</p>
+}
+
+export component App() {
+  <Composite PropComp={Separate}>
+    component InlineComp() {
+      <p>{\`I'm an inline component.\`}</p>
+    }
+  </Composite>
+}`;
+
+const card_composition_code = `component Card({ children, Header, Footer }) {
+  <fieldset>
+    <Header />
+    <hr />
+    <children />
+    <hr />
+    <Footer />
+  </fieldset>
+}
+
+component CustomHeader() {
+  <h1>{'Card Title'}</h1>
+}
+
+export component App() {
+  <Card Header={CustomHeader}>
+    // <- Header passed in as a prop
+    <p>{'Card content here'}</p>
+    component Footer() {
+      // <- Footer passed in as a inline component
+      <button>{'Cancel'}</button>
+      <button>{'OK'}</button>
+    }
+  </Card>
+}`;
+
+const prop_shorthands_code = `// Object spread
+<div {...properties}>{'Content'}</div>
+
+// Shorthand props (when variable name matches prop name)
+<div {onClick} {className}>{'Content'}</div>
+
+// Equivalent to:
+<div {onClick} {className}>{'Content'}</div>`;
+
+const portal_code = `import { Portal } from 'ripple';
+
+export component App() {
+  <div class="app">
+    <h1>{'My App'}</h1>
+
+    {/* This will render inside document.body, not inside the .app div */}
+    <Portal target={document.body}>
+      <div class="modal">
+        <h2>{'I am rendered in document.body!'}</h2>
+        <p>{'This content escapes the normal component tree.'}</p>
+      </div>
+    </Portal>
+  </div>
+}`;
+
+export component ComponentsPage() {
 	<DocsLayout
-		title={doc.title}
-		editPath={doc.editPath}
-		prevLink={doc.prev}
-		nextLink={doc.next}
-		toc={doc.toc}
+		title="Components"
+		prevLink={{ href: '/docs/guide/syntax', text: 'Template Syntax' }}
+		nextLink={{ href: '/docs/guide/control-flow', text: 'Control Flow' }}
+		{toc}
 		currentPath="/docs/guide/components"
 	>
-		<div class="doc-content">{html doc.html}</div>
+		<DocHeading level={1} id="components">{'Components'}</DocHeading>
+
+		<DocHeading level={2} id="lifecycle">{'Lifecycle'}</DocHeading>
+
+		<DocCallout type="info" title="Glossary">
+			<ul>
+				<li>
+					<strong>{'Pure'}</strong>
+					{': The idea that a function should produce no side-effects.'}
+				</li>
+				<li>
+					<strong>{'Side-effect'}</strong>
+					{': A permanent, externally observable state change.'}
+				</li>
+			</ul>
+		</DocCallout>
+
+		<p>
+			{'Ripple\'s component lifecycle is akin to Vue/Svelte/Solid. The root scope of your component only runs once, akin to the "setup" scope in Vue/Svelte/Solid. However, all child scopes such as nested template scopes, and blocks like '}
+			<code>{'if'}</code>
+			{' and '}
+			<code>{'for'}</code>
+			{', may rerun if they contain reactive variables within them. Therefore, it is advisable to only write pure code within your components, and place side-effects within '}
+			<code>{'effect()'}</code>
+			{' to ensure they only run when intended.'}
+		</p>
+
+		<DocHeading level={2} id="children">{'Children'}</DocHeading>
+
+		<p>
+			{'To pass elements to be nested within a component, simply nest them as you would write HTML. By default, Ripple will make the content available as the '}
+			<code>{'children'}</code>
+			{' prop, which you can then render using '}
+			<code>{'<props.children />'}</code>
+			{' (or simply '}
+			<code>{'<children />'}</code>
+			{' if you destructured your props).'}
+		</p>
+
+		<DocCodeBlock code={children_code} lang="ripple" />
+
+		<DocHeading level={3} id="named-children">{'Named Children'}</DocHeading>
+
+		<p>
+			{'If you need to pass more than one child to a component, you can either pass the child as a prop or define a component with the same name as the prop within the scope of the parent.'}
+		</p>
+
+		<DocCallout type="warning" title="Note">
+			<p>{'The child you pass in MUST be a component, not just templates!'}</p>
+		</DocCallout>
+
+		<DocCodeGroup code={named_children_code} lang="ripple" />
+
+		<DocHeading level={2} id="example-card-component-using-child-composition">
+			{'Example: Card Component Using Child Composition'}
+		</DocHeading>
+
+		<p>
+			{'Using what we\'ve learnt, let\'s make a versatile card component that can display an optional header and footer.'}
+		</p>
+
+		<p>
+			{'This pattern is commonly achieved with "slots" from Vue/Web Components, "render props" from React, and "snippets" from Svelte.'}
+		</p>
+
+		<DocCodeGroup code={card_composition_code} lang="ripple" />
+
+		<DocHeading level={2} id="reactive-props">{'Reactive Props'}</DocHeading>
+
+		<p>
+			{'See '}
+			<a href="/docs/guide/reactivity#props-and-attributes">{'Reactivity'}</a>
+			{'.'}
+		</p>
+
+		<DocHeading level={2} id="prop-shorthands">{'Prop Shorthands'}</DocHeading>
+
+		<DocCodeBlock code={prop_shorthands_code} lang="ripple" />
+
+		<DocHeading level={2} id="portal-component">{'Portal Component'}</DocHeading>
+
+		<p>
+			{'The '}
+			<code>{'Portal'}</code>
+			{' component allows you to render (teleport) content anywhere in the DOM tree, breaking out of the normal component hierarchy. This is particularly useful for modals, tooltips, and notifications.'}
+		</p>
+
+		<DocCodeBlock code={portal_code} lang="ripple" />
 	</DocsLayout>
 }

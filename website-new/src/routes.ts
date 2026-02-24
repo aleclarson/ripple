@@ -52,6 +52,14 @@ export const routes = [
 
 	// API routes
 	new ServerRoute({
+		path: '/api/search-index',
+		methods: ['GET'],
+		handler: async () => {
+			const { get_search_index } = await import('./lib/markdown.js');
+			return Response.json(get_search_index());
+		},
+	}),
+	new ServerRoute({
 		path: '/api/hello',
 		methods: ['GET'],
 		handler: async (context) => {
