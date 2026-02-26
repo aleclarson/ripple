@@ -89,7 +89,12 @@ function visit_source_ast(ast, src_line_offsets, { regions, css_element_info }) 
 	walk(ast, null, {
 		Element(node, context) {
 			// Check if this is a style element with CSS content
-			if (node.id?.type === 'Identifier' && node.id?.name === 'style' && node.css && node.metadata.styleScopeHash) {
+			if (
+				node.id?.type === 'Identifier' &&
+				node.id?.name === 'style' &&
+				node.css &&
+				node.metadata.styleScopeHash
+			) {
 				const openLoc = /** @type {ESTreeJSX.JSXOpeningElement & AST.NodeWithLocation} */ (
 					node.openingElement
 				).loc;

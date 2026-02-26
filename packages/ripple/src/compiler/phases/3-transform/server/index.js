@@ -698,9 +698,7 @@ const visitors = {
 			!node.metadata.styleScopeHash
 		) {
 			state.init?.push(
-				b.stmt(
-					b.call(b.member('__output', b.id('push')), b.literal(`<style>${node.css}</style>`)),
-				),
+				b.stmt(b.call(b.member('__output', b.id('push')), b.literal(`<style>${node.css}</style>`))),
 			);
 			return;
 		}

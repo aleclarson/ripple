@@ -6,7 +6,9 @@ describe('<style raw>', () => {
 		component TestRawStyle() {
 			<div class="wrapper">
 				<style raw>
-					body { background-color: red; }
+					body {
+						background-color: red;
+					}
 				</style>
 			</div>
 		}
@@ -65,7 +67,9 @@ export component Test() {
 		component TestPosition() {
 			<div class="before">{'before'}</div>
 			<style raw>
-				.test { color: green; }
+				.test {
+					color: green;
+				}
 			</style>
 			<div class="after">{'after'}</div>
 		}
@@ -89,14 +93,16 @@ export component Test() {
 		const iframe = document.createElement('iframe');
 		document.body.appendChild(iframe);
 
-		const iframeDoc = /** @type {Document} */ (iframe.contentDocument!);
+		const iframeDoc = /** @type {Document} */ iframe.contentDocument!;
 		const iframeHead = iframeDoc!.head;
 		const iframeBody = iframeDoc!.body;
 
 		component TestPortalStyle() {
 			<Portal target={iframeHead}>
 				<style raw>
-					body { background-color: lightyellow; }
+					body {
+						background-color: lightyellow;
+					}
 				</style>
 			</Portal>
 			<Portal target={iframeBody}>
