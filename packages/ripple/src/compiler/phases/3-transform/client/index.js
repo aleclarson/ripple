@@ -1129,11 +1129,14 @@ const visitors = {
 	Element(node, context) {
 		const { state, visit } = context;
 
-		if (context.state.inside_head) {
-			if (node.id.type === 'Identifier' && node.id.name === 'style') {
+		if (node.id.type === 'Identifier' && node.id.name === 'style') {
+			if (context.state.inside_head || !node.metadata.styleScopeHash) {
 				state.template?.push(`<style>${sanitize_template_string(node.css)}</style>`);
 				return;
 			}
+		}
+
+		if (context.state.inside_head) {
 			if (node.id.type === 'Identifier' && node.id.name === 'script') {
 				const id = state.flush_node?.();
 				state.template?.push('<!>');

@@ -690,6 +690,21 @@ const visitors = {
 					)
 				: state.namespace;
 
+		// Handle raw (non-scoped) <style> elements as regular DOM output
+		if (
+			is_dom_element &&
+			node.id.type === 'Identifier' &&
+			node.id.name === 'style' &&
+			!node.metadata.styleScopeHash
+		) {
+			state.init?.push(
+				b.stmt(
+					b.call(b.member('__output', b.id('push')), b.literal(`<style>${node.css}</style>`)),
+				),
+			);
+			return;
+		}
+
 		if (is_dom_element) {
 			const is_void = dynamic_name
 				? false

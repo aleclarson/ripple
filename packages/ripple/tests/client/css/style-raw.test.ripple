@@ -1,0 +1,120 @@
+import { compile } from 'ripple/compiler';
+import { Portal, flushSync } from 'ripple';
+
+describe('<style raw>', () => {
+	it('renders as a DOM element instead of scoped CSS', () => {
+		component TestRawStyle() {
+			<div class="wrapper">
+				<style raw>
+					body { background-color: red; }
+				</style>
+			</div>
+		}
+
+		render(TestRawStyle);
+
+		const styleEl = container.querySelector('style');
+		expect(styleEl).toBeTruthy();
+		expect(styleEl!.textContent).toContain('background-color: red');
+	});
+
+	it('does not scope CSS when raw is present', () => {
+		const source = `
+export component Test() {
+	<div class="card">{'content'}</div>
+
+	<style raw>
+		.card { color: red; }
+	</style>
+}`;
+		const result = compile(source, 'test.ripple');
+
+		// Should not produce scoped CSS output
+		expect(result.css).toBe('');
+
+		// Should include <style> in the template markup
+		expect(result.js.code).toContain('<style>');
+		expect(result.js.code).toContain('.card { color: red; }');
+	});
+
+	it('allows scoped style alongside raw style', () => {
+		const source = `
+export component Test() {
+	<div class="card">{'content'}</div>
+
+	<style raw>
+		body { margin: 0; }
+	</style>
+
+	<style>
+		.card { color: blue; }
+	</style>
+}`;
+		const result = compile(source, 'test.ripple');
+
+		// Scoped CSS should still be generated
+		expect(result.css).toContain('.card');
+		expect(result.css).toMatch(/\.card\.ripple-[a-z0-9]+/);
+
+		// Raw style should be in the template
+		expect(result.js.code).toContain('<style>');
+		expect(result.js.code).toContain('body { margin: 0; }');
+	});
+
+	it('renders raw style in the DOM at the correct position', () => {
+		component TestPosition() {
+			<div class="before">{'before'}</div>
+			<style raw>
+				.test { color: green; }
+			</style>
+			<div class="after">{'after'}</div>
+		}
+
+		render(TestPosition);
+
+		const before = container.querySelector('.before');
+		const after = container.querySelector('.after');
+		const styleEl = container.querySelector('style');
+
+		expect(before).toBeTruthy();
+		expect(after).toBeTruthy();
+		expect(styleEl).toBeTruthy();
+
+		// Style should be between the two divs
+		expect(before!.nextElementSibling).toBe(styleEl);
+		expect(styleEl!.nextElementSibling).toBe(after);
+	});
+
+	it('works when portaled into an iframe head', () => {
+		const iframe = document.createElement('iframe');
+		document.body.appendChild(iframe);
+
+		const iframeDoc = /** @type {Document} */ (iframe.contentDocument!);
+		const iframeHead = iframeDoc!.head;
+		const iframeBody = iframeDoc!.body;
+
+		component TestPortalStyle() {
+			<Portal target={iframeHead}>
+				<style raw>
+					body { background-color: lightyellow; }
+				</style>
+			</Portal>
+			<Portal target={iframeBody}>
+				<div class="content">{'Hello'}</div>
+			</Portal>
+		}
+
+		render(TestPortalStyle);
+		flushSync();
+
+		// Style should be in iframe head
+		const styleEl = iframeHead.querySelector('style');
+		expect(styleEl).toBeTruthy();
+		expect(styleEl!.textContent).toContain('background-color: lightyellow');
+
+		// Content should be in iframe body
+		expect(iframeBody.querySelector('.content')).toBeTruthy();
+
+		document.body.removeChild(iframe);
+	});
+});

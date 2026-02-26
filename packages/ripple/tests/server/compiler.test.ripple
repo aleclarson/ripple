@@ -64,6 +64,47 @@ export component Layout(props) {
 	});
 });
 
+describe('style raw server compilation', () => {
+	it('compiles <style raw> as inline HTML element', () => {
+		const source = `
+export component Test() {
+	<div>{'content'}</div>
+	<style raw>
+		body { margin: 0; }
+	</style>
+}`;
+		const result = compile(source, 'test.ripple', { mode: 'server' });
+
+		expect(result.js.code).toContain('<style>');
+		expect(result.js.code).toContain('body { margin: 0; }');
+		expect(result.css).toBe('');
+	});
+
+	it('compiles scoped style alongside raw style in server mode', () => {
+		const source = `
+export component Test() {
+	<div class="card">{'content'}</div>
+
+	<style raw>
+		body { margin: 0; }
+	</style>
+
+	<style>
+		.card { color: blue; }
+	</style>
+}`;
+		const result = compile(source, 'test.ripple', { mode: 'server' });
+
+		// Scoped CSS should still be generated
+		expect(result.css).toContain('.card');
+		expect(result.css).toMatch(/\.card\.ripple-[a-z0-9]+/);
+
+		// Raw style should be in the server output
+		expect(result.js.code).toContain('<style>');
+		expect(result.js.code).toContain('body { margin: 0; }');
+	});
+});
+
 describe('compiler server block tests', () => {
 	it('compiles server block with with only supported types', () => {
 		const source = `

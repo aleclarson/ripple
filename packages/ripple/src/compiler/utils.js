@@ -653,6 +653,7 @@ function normalize_child(node, normalized, context) {
 		node.type === 'Element' &&
 		node.id.type === 'Identifier' &&
 		((node.id.name === 'style' &&
+			node.metadata.styleScopeHash &&
 			!context.state.inside_head &&
 			!context.state.keep_component_style) ||
 			node.id.name === 'head' ||

@@ -2132,7 +2132,11 @@ function RipplePlugin(config) {
 						);
 						const parsed_css = parse_style(content, { loose: this.#loose });
 
-						if (!inside_head) {
+						const has_raw = open.attributes?.some(
+							(attr) => attr.type === 'Attribute' && attr.name?.name === 'raw',
+						);
+
+						if (!inside_head && !has_raw) {
 							if (component.css !== null) {
 								throw new Error('Components can only have one style tag');
 							}
