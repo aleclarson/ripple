@@ -231,6 +231,28 @@ describe('compiler > basics', () => {
 		const result = compile(source, 'test.ripple', { mode: 'client' });
 	});
 
+	it('preserves async when wrapping track callback calls with scope', () => {
+		const source = `
+import { track } from 'ripple';
+
+async function get_email(id: number) {
+	return String(id);
+}
+
+export component App() {
+	let input = track(1);
+	const emailPromise = track(async () => get_email(@input));
+	const email = await @emailPromise;
+	<div>{email}</div>
+}`;
+
+		const { js } = compile(source, 'test.ripple', { mode: 'client' });
+
+		expect(js.code).toContain(
+			'track(async () => _$_.with_scope(__block, async () => get_email(_$_.get(input))), void 0, void 0, __block)',
+		);
+	});
+
 	it('calculates fragment hop count after return-guard grouping', () => {
 		const source = `export component App() {
 	let stop = false;

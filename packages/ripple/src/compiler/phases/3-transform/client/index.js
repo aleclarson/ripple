@@ -129,6 +129,27 @@ function visit_function(node, context) {
 }
 
 /**
+ * @param {TransformClientContext} context
+ * @returns {boolean}
+ */
+function is_inside_async_function(context) {
+	for (let i = context.path.length - 1; i >= 0; i -= 1) {
+		const context_node = context.path[i];
+		if (
+			context_node.type === 'FunctionExpression' ||
+			context_node.type === 'ArrowFunctionExpression' ||
+			context_node.type === 'FunctionDeclaration'
+		) {
+			return context_node.async === true;
+		}
+		if (context_node.type === 'Component') {
+			return false;
+		}
+	}
+	return false;
+}
+
+/**
  * @param {AST.Element} node
  * @param {number} index
  * @param {TransformClientContext} context
@@ -597,7 +618,7 @@ const visitors = {
 						node.arguments.map((arg) => context.visit(arg))
 					),
 				},
-				context.state.metadata?.await ?? false,
+				(context.state.metadata?.await ?? false) || is_inside_async_function(context),
 			),
 		);
 	},
