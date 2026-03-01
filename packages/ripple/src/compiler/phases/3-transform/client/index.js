@@ -109,7 +109,11 @@ function visit_function(node, context) {
 		context.visit(node.body, {
 			...state,
 			// we are new context so tracking no longer applies
-			metadata: { ...state.metadata, tracking: false },
+			metadata: {
+				...state.metadata,
+				tracking: false,
+				await: node.async === true ? true : state.metadata?.await,
+			},
 		})
 	);
 
@@ -126,27 +130,6 @@ function visit_function(node, context) {
 		params: node.params.map((param) => context.visit(param, state)),
 		body,
 	};
-}
-
-/**
- * @param {TransformClientContext} context
- * @returns {boolean}
- */
-function is_inside_async_function(context) {
-	for (let i = context.path.length - 1; i >= 0; i -= 1) {
-		const context_node = context.path[i];
-		if (
-			context_node.type === 'FunctionExpression' ||
-			context_node.type === 'ArrowFunctionExpression' ||
-			context_node.type === 'FunctionDeclaration'
-		) {
-			return context_node.async === true;
-		}
-		if (context_node.type === 'Component') {
-			return false;
-		}
-	}
-	return false;
 }
 
 /**
@@ -618,7 +601,7 @@ const visitors = {
 						node.arguments.map((arg) => context.visit(arg))
 					),
 				},
-				(context.state.metadata?.await ?? false) || is_inside_async_function(context),
+				context.state.metadata?.await ?? false,
 			),
 		);
 	},
