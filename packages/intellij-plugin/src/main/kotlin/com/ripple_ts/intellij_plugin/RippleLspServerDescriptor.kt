@@ -12,7 +12,8 @@ internal class RippleLspServerDescriptor(
 	override fun isSupportedFile(file: VirtualFile): Boolean = RippleFileType.isRippleFile(file)
 
 	override fun createCommandLine(): GeneralCommandLine {
-		val commandLine = GeneralCommandLine(serverInfo.binary.toString(), "--stdio")
+		val command = serverInfo.command
+		val commandLine = GeneralCommandLine(command.first(), *command.drop(1).toTypedArray())
 		serverInfo.root?.let { commandLine.withWorkDirectory(it.toFile()) }
 		return commandLine
 	}

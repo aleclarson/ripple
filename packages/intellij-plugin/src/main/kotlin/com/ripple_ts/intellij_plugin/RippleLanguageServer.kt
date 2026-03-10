@@ -1,61 +1,95 @@
 package com.ripple_ts.intellij_plugin
 
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.util.ExecUtil
+import com.intellij.notification.Notification
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.platform.lsp.api.LspServerManager
 import com.intellij.util.EnvironmentUtil
 import java.io.File
+import java.net.JarURLConnection
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+import java.util.Collections
+import java.util.Comparator
+import java.util.WeakHashMap
+import java.util.concurrent.TimeUnit
 
 internal object RippleLanguageServer {
-	private const val LSP_PACKAGE = "@ripple-ts/language-server"
 	private const val LSP_BIN = "ripple-language-server"
-	private const val LSP_VERSION_RESOURCE = "/lsp-version.txt"
 	private const val FALLBACK_VERSION = "0.2.200"
-	private val requiredVersion: String by lazy { readRequiredVersion() }
+	private const val PLUGIN_ID = "com.ripple_ts.intellij_plugin"
+	private const val BUNDLED_SERVER_RESOURCE_ROOT = "language-server"
+	private const val BUNDLED_PACKAGE_JSON_RESOURCE = "/language-server/node_modules/@ripple-ts/language-server/package.json"
+	private const val NOTIFICATION_GROUP = "Ripple"
+	private const val CRITICAL_NOTIFICATION_GROUP = "Ripple Critical"
+	private val requiredVersion: String by lazy { readBundledVersion() }
 	private val VERSION_PATTERN = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
 	private val ROOT_MARKERS = listOf("package.json", "pnpm-workspace.yaml", ".git")
 	private val LOG = Logger.getInstance(RippleLanguageServer::class.java)
-	private val installLock = Any()
+	private val bundledServerLock = Any()
+	private val missingRuntimeNotifications = Collections.synchronizedMap(WeakHashMap<Project, Notification>())
 
 	@Volatile
-	private var installInProgress = false
+	private var bundledServerDir: Path? = null
 
-	data class ServerInfo(val binary: Path, val root: Path?)
+	data class ServerInfo(val command: List<String>, val root: Path?)
+	data class ValidationResult(val success: Boolean, val message: String)
 
-	private val executableExtension = if (SystemInfo.isWindows) ".cmd" else ""
+	private val localBinaryName = if (SystemInfo.isWindows) "$LSP_BIN.cmd" else LSP_BIN
 
 	fun resolveServer(project: Project, file: VirtualFile?): ServerInfo? {
 		val startDir = file?.parent?.path?.let { Paths.get(it) } ?: project.basePath?.let { Paths.get(it) }
 		val rootDir = findRoot(startDir) ?: startDir
+		val configuredServer = configuredLanguageServerPath()
+		if (configuredServer != null) {
+			val resolved = resolveConfiguredLanguageServerCommand(configuredServer)
+			if (resolved != null) {
+				expireMissingRuntimeNotification(project)
+				return ServerInfo(resolved, rootDir)
+			}
+
+			notifyMissingRuntime(
+				project,
+				"Ripple could not use the configured custom language server. Check the path in Settings | Languages & Frameworks | Ripple.",
+			)
+			return null
+		}
 
 		val localBinary = findLocalBinary(startDir)
 		if (localBinary != null) {
-			return ServerInfo(localBinary, rootDir)
+			expireMissingRuntimeNotification(project)
+			return ServerInfo(listOf(localBinary.toString(), "--stdio"), rootDir)
 		}
 
 		val globalBinary = findGlobalBinary()
 		if (globalBinary != null) {
-			return ServerInfo(globalBinary, rootDir)
+			expireMissingRuntimeNotification(project)
+			return ServerInfo(listOf(globalBinary.toString(), "--stdio"), rootDir)
 		}
 
-		val installDir = installDir()
-		val installedBinary = resolveInstalledBinary(installDir)
-		if (installedBinary != null && installedVersion(installDir) == requiredVersion) {
-			return ServerInfo(installedBinary, rootDir)
+		val javascriptRuntime = resolveJavascriptRuntimePath(configuredJavascriptRuntimePath()) ?: findJavascriptRuntime()
+		if (javascriptRuntime == null) {
+			notifyMissingRuntime(project)
+			return null
+		}
+		expireMissingRuntimeNotification(project)
+
+		val bundledCommand = findBundledServerCommand(javascriptRuntime)
+		if (bundledCommand != null) {
+			return ServerInfo(bundledCommand, rootDir)
 		}
 
-		ensureInstallAsync(project, installDir)
 		return null
 	}
 
@@ -65,7 +99,7 @@ internal object RippleLanguageServer {
 			val nodeModules = current.resolve("node_modules")
 			if (Files.isDirectory(nodeModules)) {
 				val binDir = nodeModules.resolve(".bin")
-				val bin = binDir.resolve("$LSP_BIN.$executableExtension")
+				val bin = binDir.resolve(localBinaryName)
 				if (Files.exists(bin)) {
 					return bin
 				}
@@ -77,6 +111,139 @@ internal object RippleLanguageServer {
 
 	private fun findGlobalBinary(): Path? =
 		findExecutableInPath(LSP_BIN)
+
+	private fun findBundledServerCommand(javascriptRuntime: Path): List<String>? {
+		val bundledRoot = ensureBundledServerAvailable() ?: return null
+		val bundledScript = resolvePath(
+			bundledRoot,
+			"node_modules",
+			"@ripple-ts",
+			"language-server",
+			"bin",
+			"language-server.js",
+		)
+		if (!Files.isRegularFile(bundledScript)) {
+			LOG.warn("Bundled Ripple language server script not found at $bundledScript")
+			return null
+		}
+
+		return listOf(javascriptRuntime.toString(), bundledScript.toString(), "--stdio")
+	}
+
+	private fun findJavascriptRuntime(): Path? {
+		return findExecutableInPath("node")
+			?: findExecutableInPath("nodejs")
+			?: findExecutableInPath("bun")
+	}
+
+	internal fun validateJavascriptRuntime(runtime: String): ValidationResult {
+		val resolved = if (runtime.isBlank()) findJavascriptRuntime() else resolveJavascriptRuntimePath(runtime)
+		if (resolved == null) {
+			return ValidationResult(
+				false,
+				if (runtime.isBlank()) {
+					"Ripple could not auto-detect a JavaScript runtime. Install Node.js or Bun, or specify an explicit executable path."
+				} else {
+					"Ripple could not find that JavaScript runtime. Use an absolute path or a command available on PATH."
+				},
+			)
+		}
+
+		return try {
+			val output = ExecUtil.execAndGetOutput(createCommandLine(listOf(resolved.toString(), "--version")))
+			if (output.exitCode == 0) {
+				val version = trimOutput(output.stdout + output.stderr, 1).ifBlank { "Version check succeeded." }
+				val prefix = if (runtime.isBlank()) "Auto-detected runtime" else "Resolved runtime"
+				ValidationResult(true, "$prefix: ${resolved}\n$version")
+			} else {
+				ValidationResult(
+					false,
+					"Runtime check failed.\n\n${trimOutput(output.stderr + output.stdout)}",
+				)
+			}
+		} catch (ex: Exception) {
+			ValidationResult(false, ex.message ?: "Runtime check failed.")
+		}
+	}
+
+	internal fun validateCustomLanguageServer(server: String, runtime: String): ValidationResult {
+		if (server.isBlank()) {
+			return validateAutoDetectedLanguageServer(runtime)
+		}
+
+		val resolved = resolveConfiguredLanguageServerCommand(server, runtime)
+		if (resolved == null) {
+			return ValidationResult(
+				false,
+				"Ripple could not resolve that language server. Use an absolute path or a command available on PATH. JavaScript entry files also need a working Node.js or Bun runtime.",
+			)
+		}
+
+		return validateLanguageServerCommand(resolved, "Resolved language server command")
+	}
+
+	private fun validateAutoDetectedLanguageServer(runtime: String): ValidationResult {
+		val startDir = ProjectManager.getInstance().openProjects
+			.firstNotNullOfOrNull { project -> project.basePath?.let { Paths.get(it) } }
+		val localBinary = findLocalBinary(startDir)
+		if (localBinary != null) {
+			return validateLanguageServerCommand(
+				listOf(localBinary.toString(), "--stdio"),
+				"Auto-detected project-local language server",
+			)
+		}
+
+		val globalBinary = findGlobalBinary()
+		if (globalBinary != null) {
+			return validateLanguageServerCommand(
+				listOf(globalBinary.toString(), "--stdio"),
+				"Auto-detected global language server",
+			)
+		}
+
+		val javascriptRuntime = (if (runtime.isBlank()) findJavascriptRuntime() else resolveJavascriptRuntimePath(runtime))
+			?: return ValidationResult(
+				false,
+				"Ripple could not auto-detect a language server because neither Node.js nor Bun is available for the bundled server.",
+			)
+
+		val bundledCommand = findBundledServerCommand(javascriptRuntime)
+		if (bundledCommand != null) {
+			return validateLanguageServerCommand(bundledCommand, "Auto-detected bundled language server")
+		}
+
+		return ValidationResult(
+			false,
+			"Ripple could not auto-detect a language server from the project, PATH, or bundled plugin resources.",
+		)
+	}
+
+	private fun validateLanguageServerCommand(command: List<String>, label: String): ValidationResult {
+		return try {
+			val process = createCommandLine(command).createProcess()
+			val exited = process.waitFor(1500, TimeUnit.MILLISECONDS)
+
+			if (!exited && process.isAlive) {
+				process.destroy()
+				process.waitFor(2, TimeUnit.SECONDS)
+				if (process.isAlive) {
+					process.destroyForcibly()
+				}
+				ValidationResult(true, "$label:\n${command.joinToString(" ")}")
+			} else {
+				val details = trimOutput(
+					process.errorStream.bufferedReader().use { it.readText() } +
+						process.inputStream.bufferedReader().use { it.readText() },
+				)
+				ValidationResult(
+					false,
+					"Language server exited too early.\n\n${details.ifBlank { "Process exited with code ${process.exitValue()}." }}",
+				)
+			}
+		} catch (ex: Exception) {
+			ValidationResult(false, ex.message ?: "Language server check failed.")
+		}
+	}
 
 	private fun findRoot(startDir: Path?): Path? {
 		var current = startDir
@@ -99,154 +266,81 @@ internal object RippleLanguageServer {
 		return false
 	}
 
-	private fun installDir(): Path {
-		return Paths.get(PathManager.getSystemPath(), "ripple-language-server")
-	}
-
-	private fun resolveInstalledBinary(installDir: Path): Path? {
-		val bin = installDir.resolve(
-			"node_modules",
-			".bin",
-			if (SystemInfo.isWindows) "$LSP_BIN.cmd" else LSP_BIN
-		)
-		return if (Files.exists(bin)) bin else null
-	}
-
-	private fun installedVersion(installDir: Path): String? {
-		val packageJson = installDir.resolve(
-			"node_modules",
-			"@ripple-ts",
-			"language-server",
-			"package.json",
-		)
-		if (!Files.isRegularFile(packageJson)) {
-			return null
+	private fun ensureBundledServerAvailable(): Path? {
+		bundledServerDir?.let { cached ->
+			if (Files.isDirectory(cached)) {
+				return cached
+			}
 		}
-		return try {
-			val content = Files.readString(packageJson)
-			VERSION_PATTERN.find(content)?.groupValues?.getOrNull(1)
-		} catch (ex: Exception) {
-			LOG.warn("Failed to read Ripple language server version", ex)
-			null
+
+		synchronized(bundledServerLock) {
+			bundledServerDir?.let { cached ->
+				if (Files.isDirectory(cached)) {
+					return cached
+				}
+			}
+
+			val cacheRoot = Paths.get(PathManager.getSystemPath(), "ripple-language-server-bundled")
+			val bundleDir = cacheRoot.resolve("bundle")
+			val versionFile = cacheRoot.resolve("version.txt")
+			val bundleVersion = "${pluginVersion()}:${requiredVersion}"
+
+			if (Files.isDirectory(bundleDir) && Files.isRegularFile(versionFile)) {
+				val recorded = runCatching { Files.readString(versionFile).trim() }.getOrNull()
+				if (recorded == bundleVersion) {
+					bundledServerDir = bundleDir
+					return bundleDir
+				}
+			}
+
+			if (Files.exists(bundleDir)) {
+				deleteRecursively(bundleDir)
+			}
+
+			val extracted = extractBundledServer(bundleDir)
+			if (!extracted) {
+				LOG.warn("Failed to extract bundled Ripple language server")
+				return null
+			}
+
+			runCatching {
+				Files.createDirectories(cacheRoot)
+				Files.writeString(versionFile, bundleVersion)
+			}
+
+			bundledServerDir = bundleDir
+			return bundleDir
 		}
 	}
 
-	private fun readRequiredVersion(): String {
-		val stream = RippleLanguageServer::class.java.getResourceAsStream(LSP_VERSION_RESOURCE)
+	private fun extractBundledServer(target: Path): Boolean {
+		val resourceUrl = RippleLanguageServer::class.java.classLoader.getResource(BUNDLED_SERVER_RESOURCE_ROOT)
+			?: return false
+
+		return when (resourceUrl.protocol) {
+			"file" -> copyDirectory(Paths.get(resourceUrl.toURI()), target)
+			"jar" -> copyFromJar(resourceUrl, target)
+			else -> false
+		}
+	}
+
+	private fun readBundledVersion(): String {
+		val stream = RippleLanguageServer::class.java.getResourceAsStream(BUNDLED_PACKAGE_JSON_RESOURCE)
 		if (stream == null) {
-			LOG.warn("Ripple language server version resource not found: $LSP_VERSION_RESOURCE")
+			LOG.warn("Bundled Ripple language server package.json not found: $BUNDLED_PACKAGE_JSON_RESOURCE")
 			return FALLBACK_VERSION
 		}
 
 		return try {
-			val version = stream.bufferedReader(Charsets.UTF_8).use { reader ->
-				reader.readLine()?.trim().orEmpty()
-			}
+			val content = stream.bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
+			val version = VERSION_PATTERN.find(content)?.groupValues?.getOrNull(1).orEmpty()
 			version.ifBlank {
-				LOG.warn("Ripple language server version resource was empty: $LSP_VERSION_RESOURCE")
+				LOG.warn("Bundled Ripple language server version was missing: $BUNDLED_PACKAGE_JSON_RESOURCE")
 				FALLBACK_VERSION
 			}
 		} catch (ex: Exception) {
-			LOG.warn("Failed to read Ripple language server version resource", ex)
+			LOG.warn("Failed to read bundled Ripple language server version", ex)
 			FALLBACK_VERSION
-		}
-	}
-
-	private fun ensureInstallAsync(project: Project, installDir: Path) {
-		val required = requiredVersion
-		synchronized(installLock) {
-			if (installInProgress) {
-				return
-			}
-			if (resolveInstalledBinary(installDir) != null && installedVersion(installDir) == required) {
-				return
-			}
-			installInProgress = true
-		}
-
-			notify(
-				project,
-				NotificationType.INFORMATION,
-				"Ripple",
-				"Installing $LSP_PACKAGE@$required for language features...",
-			)
-
-		ApplicationManager.getApplication().executeOnPooledThread {
-			val success = installServer(project, installDir)
-			synchronized(installLock) {
-				installInProgress = false
-			}
-
-			if (success && !project.isDisposed) {
-				notify(
-					project,
-					NotificationType.INFORMATION,
-					"Ripple",
-					"Ripple language server installed. Restarting language services...",
-				)
-				LspServerManager.getInstance(project)
-					.stopAndRestartIfNeeded(RippleLspServerSupportProvider::class.java)
-			}
-		}
-	}
-
-	private fun installServer(project: Project, installDir: Path): Boolean {
-		val required = requiredVersion
-		val npm = findExecutableInPath("npm")
-		if (npm == null) {
-			notify(
-				project,
-				NotificationType.ERROR,
-				"Ripple",
-				"npm was not found on PATH. Install Node.js 18+ to enable Ripple language features.",
-			)
-			return false
-		}
-
-		return try {
-			Files.createDirectories(installDir)
-			val commandLine = GeneralCommandLine(
-				npm.toString(),
-				"install",
-				"$LSP_PACKAGE@$required",
-				"--prefix",
-				installDir.toString(),
-				"--no-audit",
-				"--no-fund",
-			)
-			commandLine.withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
-			val output = ExecUtil.execAndGetOutput(commandLine)
-			if (output.exitCode != 0) {
-				notifyInstallError(project, output.stderr + output.stdout)
-				return false
-			}
-
-			val version = installedVersion(installDir) ?: "unknown"
-			if (version != required) {
-				notify(
-					project,
-					NotificationType.ERROR,
-					"Ripple",
-					"Installed $LSP_PACKAGE@$version but required $required.",
-				)
-				return false
-			}
-
-			if (resolveInstalledBinary(installDir) == null) {
-				notify(
-					project,
-					NotificationType.ERROR,
-					"Ripple",
-					"Ripple language server install succeeded but the binary was not found.",
-				)
-				return false
-			}
-
-			true
-		} catch (ex: Exception) {
-			LOG.warn("Failed to install Ripple language server", ex)
-			notifyInstallError(project, ex.message ?: "Unknown error")
-			false
 		}
 	}
 
@@ -273,16 +367,54 @@ internal object RippleLanguageServer {
 		return null
 	}
 
-	private fun notifyInstallError(project: Project, details: String) {
-		val trimmed = trimOutput(details)
-		val message = buildString {
-			append("npm install failed. ")
-			if (trimmed.isNotBlank()) {
-				append("\n\n")
-				append(trimmed)
+	private fun copyDirectory(source: Path, target: Path): Boolean {
+		return runCatching {
+			Files.walk(source).use { stream ->
+				stream.forEach { path ->
+					val relative = source.relativize(path)
+					val destination = target.resolve(relative)
+					if (Files.isDirectory(path)) {
+						Files.createDirectories(destination)
+					} else {
+						Files.createDirectories(destination.parent)
+						Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING)
+					}
+				}
 			}
-		}
-		notify(project, NotificationType.ERROR, "Ripple", message)
+			true
+		}.getOrElse { false }
+	}
+
+	private fun copyFromJar(resourceUrl: java.net.URL, target: Path): Boolean {
+		return runCatching {
+			val connection = resourceUrl.openConnection() as JarURLConnection
+			val entryRoot = connection.entryName.trimEnd('/')
+			connection.jarFile.use { jar ->
+				val entries = jar.entries()
+				while (entries.hasMoreElements()) {
+					val entry = entries.nextElement()
+					if (entry.isDirectory) {
+						continue
+					}
+					if (!entry.name.startsWith("$entryRoot/")) {
+						continue
+					}
+					val relative = entry.name.removePrefix("$entryRoot/")
+					val destination = target.resolve(relative)
+					Files.createDirectories(destination.parent)
+					jar.getInputStream(entry).use { input ->
+						Files.copy(input, destination, StandardCopyOption.REPLACE_EXISTING)
+					}
+				}
+			}
+			true
+		}.getOrElse { false }
+	}
+
+	private fun deleteRecursively(path: Path) {
+		Files.walk(path)
+			.sorted(Comparator.reverseOrder())
+			.forEach { Files.deleteIfExists(it) }
 	}
 
 	private fun trimOutput(output: String, maxLines: Int = 8): String {
@@ -290,13 +422,134 @@ internal object RippleLanguageServer {
 		return lines.takeLast(maxLines).joinToString("\n")
 	}
 
+	private fun notifyMissingRuntime(project: Project, message: String = defaultMissingRuntimeMessage()) {
+		if (project.isDisposed) {
+			return
+		}
+
+		if (missingRuntimeNotifications[project] != null) {
+			return
+		}
+
+		val notification = NotificationGroupManager.getInstance()
+			.getNotificationGroup(CRITICAL_NOTIFICATION_GROUP)
+			.createNotification(
+				"Ripple",
+				message,
+				NotificationType.ERROR,
+			)
+
+		missingRuntimeNotifications[project] = notification
+		notification.notify(project)
+	}
+
+	private fun expireMissingRuntimeNotification(project: Project) {
+		missingRuntimeNotifications.remove(project)?.expire()
+	}
+
+	private fun configuredJavascriptRuntimePath(): String? {
+		return RippleSettingsService.getInstance().javascriptRuntimePath.ifBlank { null }
+	}
+
+	private fun configuredLanguageServerPath(): String? {
+		return RippleSettingsService.getInstance().languageServerPath.ifBlank { null }
+	}
+
+	private fun resolveConfiguredLanguageServerCommand(server: String): List<String>? {
+		return resolveConfiguredLanguageServerCommand(server, configuredJavascriptRuntimePath())
+	}
+
+	private fun resolveConfiguredLanguageServerCommand(server: String, runtime: String?): List<String>? {
+		val resolvedServer = resolveConfiguredExecutable(server) ?: return null
+		if (!isJavascriptFile(resolvedServer)) {
+			return listOf(resolvedServer.toString(), "--stdio")
+		}
+
+		val javascriptRuntime = resolveJavascriptRuntimePath(runtime) ?: findJavascriptRuntime() ?: return null
+		return listOf(javascriptRuntime.toString(), resolvedServer.toString(), "--stdio")
+	}
+
+	private fun resolveJavascriptRuntimePath(runtime: String?): Path? {
+		return resolveConfiguredExecutable(runtime)
+	}
+
+	private fun resolveConfiguredExecutable(command: String?): Path? {
+		val normalized = normalizeConfiguredCommand(command) ?: return null
+		val explicitPath = resolveExplicitPath(normalized)
+		if (explicitPath != null) {
+			return explicitPath
+		}
+
+		return findExecutableInPath(normalized)
+	}
+
+	private fun normalizeConfiguredCommand(command: String?): String? {
+		val trimmed = command?.trim().orEmpty()
+		if (trimmed.isBlank()) {
+			return null
+		}
+
+		if (trimmed.length >= 2) {
+			val first = trimmed.first()
+			val last = trimmed.last()
+			if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+				return trimmed.substring(1, trimmed.length - 1).trim().ifBlank { null }
+			}
+		}
+
+		return trimmed
+	}
+
+	private fun resolveExplicitPath(command: String): Path? {
+		if (!looksLikePath(command)) {
+			return null
+		}
+
+		return runCatching {
+			val path = Paths.get(command).toAbsolutePath().normalize()
+			if (Files.isRegularFile(path)) path else null
+		}.getOrNull()
+	}
+
+	private fun looksLikePath(command: String): Boolean {
+		return command.contains('/') || command.contains('\\') || command.startsWith(".")
+	}
+
+	private fun resolvePath(base: Path, vararg parts: String): Path {
+		var current = base
+		for (part in parts) {
+			current = current.resolve(part)
+		}
+		return current
+	}
+
+	private fun isJavascriptFile(path: Path): Boolean {
+		val filename = path.fileName?.toString()?.lowercase() ?: return false
+		return filename.endsWith(".js") || filename.endsWith(".cjs") || filename.endsWith(".mjs")
+	}
+
+	private fun createCommandLine(command: List<String>): GeneralCommandLine {
+		val commandLine = GeneralCommandLine(command.first(), *command.drop(1).toTypedArray())
+		commandLine.withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
+		return commandLine
+	}
+
+	private fun defaultMissingRuntimeMessage(): String {
+		return "Ripple could not find a project-local or global language server, and neither Node.js nor Bun is available on PATH. Install Node.js or Bun to run the bundled Ripple language server."
+	}
+
 	private fun notify(project: Project, type: NotificationType, title: String, content: String) {
 		if (project.isDisposed) {
 			return
 		}
 		NotificationGroupManager.getInstance()
-			.getNotificationGroup("Ripple")
+			.getNotificationGroup(NOTIFICATION_GROUP)
 			.createNotification(title, content, type)
 			.notify(project)
+	}
+
+	private fun pluginVersion(): String {
+		val descriptor = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))
+		return descriptor?.version ?: "dev"
 	}
 }

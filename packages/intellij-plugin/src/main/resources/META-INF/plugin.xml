@@ -24,6 +24,8 @@
 	<!-- Extensions defined by the plugin.
 			 Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
 	<extensions defaultExtensionNs="com.intellij">
+		<applicationConfigurable parentId="language" id="preferences.ripple" displayName="Ripple"
+								 instance="com.ripple_ts.intellij_plugin.RippleSettingsConfigurable"/>
 		<fileType name="Ripple" implementationClass="com.ripple_ts.intellij_plugin.RippleFileType" fieldName="INSTANCE"
 					 language="Ripple" extensions="ripple"/>
 		<lang.commenter language="Ripple" implementationClass="com.ripple_ts.intellij_plugin.RippleCommenter"/>
@@ -33,5 +35,6 @@
 								 implementationClass="org.jetbrains.plugins.textmate.language.syntax.highlighting.TextMateEditorHighlighterProvider"/>
 		<textmate.bundleProvider implementation="com.ripple_ts.intellij_plugin.RippleTextMateBundleProvider"/>
 		<notificationGroup id="Ripple" displayType="BALLOON" isLogByDefault="true"/>
+		<notificationGroup id="Ripple Critical" displayType="STICKY_BALLOON" isLogByDefault="true"/>
 	</extensions>
 </idea-plugin>

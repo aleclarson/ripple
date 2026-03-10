@@ -1,6 +1,7 @@
 package com.ripple_ts.intellij_plugin
 
 import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
@@ -14,8 +15,20 @@ import java.util.Comparator
 
 class RippleTextMateBundleProvider : TextMateBundleProvider {
 	override fun getBundles(): List<TextMateBundleProvider.PluginBundle> {
-		val bundlePath = ensureBundleAvailable() ?: return emptyList()
+		val bundlePath = resolveBundlePath() ?: return emptyList()
 		return listOf(TextMateBundleProvider.PluginBundle("Ripple", bundlePath))
+	}
+
+	private fun resolveBundlePath(): Path? {
+		val configuredPath = configuredBundlePath()
+		if (configuredPath != null) {
+			if (isValidTextMateBundle(configuredPath)) {
+				return configuredPath
+			}
+			LOG.warn("Configured Ripple TextMate bundle path is invalid: $configuredPath")
+		}
+
+		return ensureBundleAvailable()
 	}
 
 	private fun ensureBundleAvailable(): Path? {
@@ -132,11 +145,102 @@ class RippleTextMateBundleProvider : TextMateBundleProvider {
 
 	companion object {
 		private const val PLUGIN_ID = "com.ripple_ts.intellij_plugin"
-		private const val BUNDLE_RESOURCE_ROOT = "textmate/ripple.tmbundle"
+		private const val BUNDLE_RESOURCE_ROOT = "textmate"
 		private val LOG = Logger.getInstance(RippleTextMateBundleProvider::class.java)
 		private val lock = Any()
 
 		@Volatile
 		private var cachedBundle: Path? = null
+
+		internal fun validateBundlePath(path: String): RippleLanguageServer.ValidationResult {
+			val resolved = if (path.isBlank()) {
+				ensureBundledBundleForValidation()
+			} else {
+				resolveConfiguredBundlePath(path)
+			}
+
+			if (resolved == null || !isValidTextMateBundle(resolved)) {
+				return RippleLanguageServer.ValidationResult(
+					false,
+					if (path.isBlank()) {
+						"Ripple could not resolve the bundled TextMate bundle."
+					} else {
+						"Ripple could not find a valid TextMate bundle at that path. Point it at a bundle directory containing `info.plist` and `Syntaxes/ripple.tmLanguage.json`."
+					},
+				)
+			}
+
+			val prefix = if (path.isBlank()) "Resolved bundled TextMate bundle" else "Resolved TextMate bundle"
+			return RippleLanguageServer.ValidationResult(true, "$prefix: $resolved")
+		}
+
+		internal fun reloadBundles() {
+			cachedBundle = null
+			runCatching {
+				val serviceClass = Class.forName("org.jetbrains.plugins.textmate.TextMateService")
+				val service = serviceClass.methods.firstOrNull {
+					it.name == "getInstance" && it.parameterCount == 0
+				}?.invoke(null) ?: run {
+					@Suppress("UNCHECKED_CAST")
+					ApplicationManager.getApplication().getService(serviceClass as Class<Any>)
+				}
+
+				if (service != null) {
+					service.javaClass.methods.firstOrNull {
+						it.name == "unregisterAllBundles" && it.parameterCount == 1
+					}?.invoke(service, false)
+					service.javaClass.methods.firstOrNull {
+						it.name == "reloadThemesFromDisk" && it.parameterCount == 0
+					}?.invoke(service)
+					service.javaClass.methods.firstOrNull {
+						it.name == "registerEnabledBundles" && it.parameterCount == 1
+					}?.invoke(service, true)
+				}
+			}.onFailure {
+				LOG.warn("Failed to reload Ripple TextMate bundles", it)
+			}
+		}
+
+		private fun configuredBundlePath(): Path? {
+			val configuredPath = RippleSettingsService.getInstance().textMateBundlePath
+			return resolveConfiguredBundlePath(configuredPath)
+		}
+
+		private fun resolveConfiguredBundlePath(path: String): Path? {
+			val trimmed = path.trim()
+			if (trimmed.isBlank()) {
+				return null
+			}
+
+			val normalized = if (trimmed.length >= 2) {
+				val first = trimmed.first()
+				val last = trimmed.last()
+				if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+					trimmed.substring(1, trimmed.length - 1).trim()
+				} else {
+					trimmed
+				}
+			} else {
+				trimmed
+			}
+
+			return runCatching {
+				Paths.get(normalized).toAbsolutePath().normalize()
+			}.getOrNull()
+		}
+
+		private fun ensureBundledBundleForValidation(): Path? {
+			return RippleTextMateBundleProvider().ensureBundleAvailable()
+		}
+
+		private fun isValidTextMateBundle(path: Path): Boolean {
+			if (!Files.isDirectory(path)) {
+				return false
+			}
+
+			val hasManifest = Files.isRegularFile(path.resolve("info.plist"))
+			val hasGrammar = Files.isRegularFile(path.resolve("Syntaxes").resolve("ripple.tmLanguage.json"))
+			return hasManifest && hasGrammar
+		}
 	}
 }

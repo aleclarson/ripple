@@ -5,7 +5,34 @@ plugins {
 }
 
 group = "com.ripple_ts.intellij_plugin"
-version = "0.0.82"
+version = "0.0.91"
+
+val repoRoot = projectDir.resolve("../..").canonicalFile
+val bundledLanguageServerDir = layout.buildDirectory.dir("generated/bundled-language-server")
+
+val bundleLanguageServer by tasks.registering(Exec::class) {
+	val outputDir = bundledLanguageServerDir.get().asFile
+	workingDir = repoRoot
+	commandLine(
+		"pnpm",
+		"exec",
+		"node",
+		"scripts/copy-external-deps.js",
+		outputDir.absolutePath,
+		"@ripple-ts/language-server",
+	)
+	inputs.files(
+		repoRoot.resolve("pnpm-lock.yaml"),
+		repoRoot.resolve("package.json"),
+		repoRoot.resolve("packages/language-server/package.json"),
+		repoRoot.resolve("packages/typescript-plugin/package.json"),
+	)
+	outputs.dir(outputDir)
+	doFirst {
+		delete(outputDir)
+		outputDir.mkdirs()
+	}
+}
 
 repositories {
 	mavenCentral()
@@ -42,6 +69,13 @@ tasks {
 	withType<JavaCompile> {
 		sourceCompatibility = "21"
 		targetCompatibility = "21"
+	}
+
+	processResources {
+		dependsOn(bundleLanguageServer)
+		from(bundledLanguageServerDir) {
+			into("language-server")
+		}
 	}
 }
 

@@ -11,7 +11,7 @@ Ripple language support for IntelliJ Platform IDEs.
 
 - IntelliJ-based IDE 2025.2+
 - LSP features require an IDE with the LSP module
-- Node.js 18+ with npm available on PATH (for LSP features)
+- Node.js 18+ or Bun on PATH (for LSP features)
 
 ## Language Server Resolution
 
@@ -19,8 +19,7 @@ The plugin looks for the Ripple language server in this order:
 
 1. Project local `node_modules/.bin/ripple-language-server`
 2. Global `ripple-language-server` on PATH
-3. Auto-installs `@ripple-ts/language-server` into the IDE system directory and
-   restarts LSP services
+3. The bundled `@ripple-ts/language-server` shipped with the plugin
 
 ## Development
 
@@ -31,6 +30,7 @@ The plugin looks for the Ripple language server in this order:
 
 - Syntax highlighting works without the LSP module; language features are enabled
   when LSP support is present.
-- Update the pinned language server version in
-  `packages/intellij-plugin/gradle.properties` (`rippleLspVersion`) when bumping
-  other editor plugins.
+- Runtime and advanced custom language server overrides are available in
+  `Settings | Languages & Frameworks | Ripple`.
+- The bundled language server version comes from the packaged
+  `@ripple-ts/language-server` dependency.
