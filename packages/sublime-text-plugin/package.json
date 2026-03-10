@@ -1,6 +1,6 @@
 {
   "name": "@ripple-ts/sublime-text-plugin",
-  "version": "0.0.82",
+  "version": "0.0.91",
   "description": "",
   "private": true,
   "scripts": {
