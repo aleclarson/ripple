@@ -84,9 +84,11 @@ If you update the tree-sitter grammar in `grammars/tree-sitter`:
 
 1. Update query files in `languages/ripple/` if needed
 2. Update the `rev` field in `extension.toml` to the new commit SHA
-3. Test locally
-4. Bump version in `extension.toml`
-5. Submit PR to zed-extensions repo (if published)
+3. Reinstall the dev extension or delete `packages/zed-plugin/grammars/` so Zed
+   re-clones the grammar at the new revision
+4. Test locally
+5. Bump version in `extension.toml`
+6. Submit PR to zed-extensions repo (if published)
 
 ### After Language Server Changes
 
