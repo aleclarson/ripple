@@ -34,7 +34,6 @@
 		<editorHighlighterProvider filetype="Ripple"
 								 implementationClass="org.jetbrains.plugins.textmate.language.syntax.highlighting.TextMateEditorHighlighterProvider"/>
 		<textmate.bundleProvider implementation="com.ripple_ts.intellij_plugin.RippleTextMateBundleProvider"/>
-		<notificationGroup id="Ripple" displayType="BALLOON" isLogByDefault="true"/>
 		<notificationGroup id="Ripple Critical" displayType="STICKY_BALLOON" isLogByDefault="true"/>
 	</extensions>
 </idea-plugin>

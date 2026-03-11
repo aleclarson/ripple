@@ -1,17 +1,12 @@
 package com.ripple_ts.intellij_plugin
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.extensions.PluginId
 import org.jetbrains.plugins.textmate.api.TextMateBundleProvider
-import java.net.JarURLConnection
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
-import java.util.Comparator
 
 class RippleTextMateBundleProvider : TextMateBundleProvider {
 	override fun getBundles(): List<TextMateBundleProvider.PluginBundle> {
@@ -88,63 +83,7 @@ class RippleTextMateBundleProvider : TextMateBundleProvider {
 		}
 	}
 
-	private fun copyDirectory(source: Path, target: Path): Boolean {
-		return runCatching {
-			Files.walk(source).use { stream ->
-				stream.forEach { path ->
-					val relative = source.relativize(path)
-					val destination = target.resolve(relative)
-					if (Files.isDirectory(path)) {
-						Files.createDirectories(destination)
-					} else {
-						Files.createDirectories(destination.parent)
-						Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING)
-					}
-				}
-			}
-			true
-		}.getOrElse { false }
-	}
-
-	private fun copyFromJar(resourceUrl: java.net.URL, target: Path): Boolean {
-		return runCatching {
-			val connection = resourceUrl.openConnection() as JarURLConnection
-			val entryRoot = connection.entryName.trimEnd('/')
-			connection.jarFile.use { jar ->
-				val entries = jar.entries()
-				while (entries.hasMoreElements()) {
-					val entry = entries.nextElement()
-					if (entry.isDirectory) {
-						continue
-					}
-					if (!entry.name.startsWith("$entryRoot/")) {
-						continue
-					}
-					val relative = entry.name.removePrefix("$entryRoot/")
-					val destination = target.resolve(relative)
-					Files.createDirectories(destination.parent)
-					jar.getInputStream(entry).use { input ->
-						Files.copy(input, destination, StandardCopyOption.REPLACE_EXISTING)
-					}
-				}
-			}
-			true
-		}.getOrElse { false }
-	}
-
-	private fun deleteRecursively(path: Path) {
-		Files.walk(path)
-			.sorted(Comparator.reverseOrder())
-			.forEach { Files.deleteIfExists(it) }
-	}
-
-	private fun pluginVersion(): String {
-		val descriptor = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))
-		return descriptor?.version ?: "dev"
-	}
-
 	companion object {
-		private const val PLUGIN_ID = "com.ripple_ts.intellij_plugin"
 		private const val BUNDLE_RESOURCE_ROOT = "textmate"
 		private val LOG = Logger.getInstance(RippleTextMateBundleProvider::class.java)
 		private val lock = Any()
@@ -207,26 +146,7 @@ class RippleTextMateBundleProvider : TextMateBundleProvider {
 		}
 
 		private fun resolveConfiguredBundlePath(path: String): Path? {
-			val trimmed = path.trim()
-			if (trimmed.isBlank()) {
-				return null
-			}
-
-			val normalized = if (trimmed.length >= 2) {
-				val first = trimmed.first()
-				val last = trimmed.last()
-				if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-					trimmed.substring(1, trimmed.length - 1).trim()
-				} else {
-					trimmed
-				}
-			} else {
-				trimmed
-			}
-
-			return runCatching {
-				Paths.get(normalized).toAbsolutePath().normalize()
-			}.getOrNull()
+			return resolveConfiguredPath(path)
 		}
 
 		private fun ensureBundledBundleForValidation(): Path? {

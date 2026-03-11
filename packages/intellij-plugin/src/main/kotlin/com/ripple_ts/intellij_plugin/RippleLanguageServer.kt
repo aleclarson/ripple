@@ -1,6 +1,5 @@
 package com.ripple_ts.intellij_plugin
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.util.ExecUtil
 import com.intellij.notification.Notification
@@ -8,30 +7,24 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.EnvironmentUtil
 import java.io.File
-import java.net.JarURLConnection
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
 import java.util.Collections
-import java.util.Comparator
 import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
 
 internal object RippleLanguageServer {
 	private const val LSP_BIN = "ripple-language-server"
 	private const val FALLBACK_VERSION = "0.2.200"
-	private const val PLUGIN_ID = "com.ripple_ts.intellij_plugin"
 	private const val BUNDLED_SERVER_RESOURCE_ROOT = "language-server"
 	private const val BUNDLED_PACKAGE_JSON_RESOURCE = "/language-server/node_modules/@ripple-ts/language-server/package.json"
-	private const val NOTIFICATION_GROUP = "Ripple"
 	private const val CRITICAL_NOTIFICATION_GROUP = "Ripple Critical"
 	private val requiredVersion: String by lazy { readBundledVersion() }
 	private val VERSION_PATTERN = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
@@ -367,56 +360,6 @@ internal object RippleLanguageServer {
 		return null
 	}
 
-	private fun copyDirectory(source: Path, target: Path): Boolean {
-		return runCatching {
-			Files.walk(source).use { stream ->
-				stream.forEach { path ->
-					val relative = source.relativize(path)
-					val destination = target.resolve(relative)
-					if (Files.isDirectory(path)) {
-						Files.createDirectories(destination)
-					} else {
-						Files.createDirectories(destination.parent)
-						Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING)
-					}
-				}
-			}
-			true
-		}.getOrElse { false }
-	}
-
-	private fun copyFromJar(resourceUrl: java.net.URL, target: Path): Boolean {
-		return runCatching {
-			val connection = resourceUrl.openConnection() as JarURLConnection
-			val entryRoot = connection.entryName.trimEnd('/')
-			connection.jarFile.use { jar ->
-				val entries = jar.entries()
-				while (entries.hasMoreElements()) {
-					val entry = entries.nextElement()
-					if (entry.isDirectory) {
-						continue
-					}
-					if (!entry.name.startsWith("$entryRoot/")) {
-						continue
-					}
-					val relative = entry.name.removePrefix("$entryRoot/")
-					val destination = target.resolve(relative)
-					Files.createDirectories(destination.parent)
-					jar.getInputStream(entry).use { input ->
-						Files.copy(input, destination, StandardCopyOption.REPLACE_EXISTING)
-					}
-				}
-			}
-			true
-		}.getOrElse { false }
-	}
-
-	private fun deleteRecursively(path: Path) {
-		Files.walk(path)
-			.sorted(Comparator.reverseOrder())
-			.forEach { Files.deleteIfExists(it) }
-	}
-
 	private fun trimOutput(output: String, maxLines: Int = 8): String {
 		val lines = output.lineSequence().filter { it.isNotBlank() }.toList()
 		return lines.takeLast(maxLines).joinToString("\n")
@@ -474,30 +417,13 @@ internal object RippleLanguageServer {
 	}
 
 	private fun resolveConfiguredExecutable(command: String?): Path? {
-		val normalized = normalizeConfiguredCommand(command) ?: return null
+		val normalized = normalizeConfiguredValue(command) ?: return null
 		val explicitPath = resolveExplicitPath(normalized)
 		if (explicitPath != null) {
 			return explicitPath
 		}
 
 		return findExecutableInPath(normalized)
-	}
-
-	private fun normalizeConfiguredCommand(command: String?): String? {
-		val trimmed = command?.trim().orEmpty()
-		if (trimmed.isBlank()) {
-			return null
-		}
-
-		if (trimmed.length >= 2) {
-			val first = trimmed.first()
-			val last = trimmed.last()
-			if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-				return trimmed.substring(1, trimmed.length - 1).trim().ifBlank { null }
-			}
-		}
-
-		return trimmed
 	}
 
 	private fun resolveExplicitPath(command: String): Path? {
@@ -538,18 +464,4 @@ internal object RippleLanguageServer {
 		return "Ripple could not find a project-local or global language server, and neither Node.js nor Bun is available on PATH. Install Node.js or Bun to run the bundled Ripple language server."
 	}
 
-	private fun notify(project: Project, type: NotificationType, title: String, content: String) {
-		if (project.isDisposed) {
-			return
-		}
-		NotificationGroupManager.getInstance()
-			.getNotificationGroup(NOTIFICATION_GROUP)
-			.createNotification(title, content, type)
-			.notify(project)
-	}
-
-	private fun pluginVersion(): String {
-		val descriptor = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))
-		return descriptor?.version ?: "dev"
-	}
 }
