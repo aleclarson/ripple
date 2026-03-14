@@ -1,5 +1,83 @@
 # ripple
 
+## 0.3.3
+
+### Patch Changes
+
+- [#804](https://github.com/Ripple-TS/ripple/pull/804)
+  [`cd1073f`](https://github.com/Ripple-TS/ripple/commit/cd1073f7cc8085c8b200ada4faf77b2c35b10c6c)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Editor support for
+  #ripple.server
+
+- Updated dependencies
+  [[`cd1073f`](https://github.com/Ripple-TS/ripple/commit/cd1073f7cc8085c8b200ada4faf77b2c35b10c6c)]:
+  - ripple@0.3.3
+
+## 0.3.2
+
+### Patch Changes
+
+- [#802](https://github.com/Ripple-TS/ripple/pull/802)
+  [`42524c9`](https://github.com/Ripple-TS/ripple/commit/42524c9551b1950d7f7a0336ce396fc312b6fe51)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Editor support for
+  #ripple.style
+
+- Updated dependencies
+  [[`42524c9`](https://github.com/Ripple-TS/ripple/commit/42524c9551b1950d7f7a0336ce396fc312b6fe51)]:
+  - ripple@0.3.2
+
+## 0.3.1
+
+### Patch Changes
+
+- [#799](https://github.com/Ripple-TS/ripple/pull/799)
+  [`87c2078`](https://github.com/Ripple-TS/ripple/commit/87c20780f6f6f7339cf94b9a9d08e028533df0a2)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Fix imports for removed
+  functions
+
+- Updated dependencies
+  [[`87c2078`](https://github.com/Ripple-TS/ripple/commit/87c20780f6f6f7339cf94b9a9d08e028533df0a2)]:
+  - ripple@0.3.1
+
+## 0.3.0
+
+### Minor Changes
+
+- [#779](https://github.com/Ripple-TS/ripple/pull/779)
+  [`74a10cc`](https://github.com/Ripple-TS/ripple/commit/74a10cc5701962cd7c72b144d59b35ecb76263a3)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Introduces #ripple namespace
+  for creating ripple reactive entities without imports, such as array, object,
+  map, set, date, url, urlSearchParams, mediaQuery. Adds track, untrack,
+  trackSplit, effect, context, server, style to the namespace. Deprecates #[] and
+  #{} in favor of #ripple[] and #ripple{}. Renames types and actual reactive
+  imports for TrackedX entities, such as TrackedArray, TrackedObject, etc. into
+  RippleArray, RippleObjec, etc.
+
+### Patch Changes
+
+- [#786](https://github.com/Ripple-TS/ripple/pull/786)
+  [`61271cb`](https://github.com/Ripple-TS/ripple/commit/61271cb1c4777f2ab9093c6c89a5ad771ec98b7d)
+  Thanks [@anubra266](https://github.com/anubra266)! - fix: preserve generic type
+  arguments in interface extends clauses for `compile_to_volar_mappings`
+
+- [#772](https://github.com/Ripple-TS/ripple/pull/772)
+  [`21dd402`](https://github.com/Ripple-TS/ripple/commit/21dd4029d7e027a0706cb133b09530a722feb73d)
+  Thanks [@anubra266](https://github.com/anubra266)! - Fix ref handling for
+  dynamic elements with reactive spread props to avoid read-only/proxy symbol
+  errors and prevent unnecessary ref teardown/recreation.
+
+- [#774](https://github.com/Ripple-TS/ripple/pull/774)
+  [`c2dbefe`](https://github.com/Ripple-TS/ripple/commit/c2dbefe5645c0c4f6e0ff4dc00d9c4de81616667)
+  Thanks [@copilot-swe-agent](https://github.com/apps/copilot-swe-agent)! - Fixes
+  language server type support for nested component call inside a parent
+  components that become props and should not be marked as unused by typescript
+- Updated dependencies
+  [[`61271cb`](https://github.com/Ripple-TS/ripple/commit/61271cb1c4777f2ab9093c6c89a5ad771ec98b7d),
+  [`21dd402`](https://github.com/Ripple-TS/ripple/commit/21dd4029d7e027a0706cb133b09530a722feb73d),
+  [`c2dbefe`](https://github.com/Ripple-TS/ripple/commit/c2dbefe5645c0c4f6e0ff4dc00d9c4de81616667),
+  [`74a10cc`](https://github.com/Ripple-TS/ripple/commit/74a10cc5701962cd7c72b144d59b35ecb76263a3)]:
+  - ripple@0.3.0
+
 ## 0.2.216
 
 ### Patch Changes
