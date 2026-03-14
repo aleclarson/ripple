@@ -84,8 +84,7 @@ If you update the tree-sitter grammar in `grammars/tree-sitter`:
 
 1. Update query files in `languages/ripple/` if needed
 2. Update the `rev` field in `extension.toml` to the new commit SHA
-3. Reinstall the dev extension or delete `packages/zed-plugin/grammars/` so Zed
-   re-clones the grammar at the new revision
+3. Delete `packages/zed-plugin/grammars/ripple/` and re-install the extension
 4. Test locally
 5. Bump version in `extension.toml`
 6. Submit PR to zed-extensions repo (if published)
@@ -123,9 +122,10 @@ npm install --save-dev @ripple-ts/language-server
 
 ### Extension won't build
 
-1. Ensure Rust toolchain is installed: `rustc --version`
-2. Ensure wasm32-wasip1 target is installed: `rustup target list --installed`
-3. Check Cargo.toml has correct `zed_extension_api` version
+1. Ensure there isn't already a directory named `ripple` in `packages/zed-plugin/grammars/`. If there is, delete it.
+2. Ensure Rust toolchain is installed: `rustc --version`
+3. Ensure wasm32-wasip1 target is installed: `rustup target list --installed`
+4. Check Cargo.toml has correct `zed_extension_api` version
 
 ## Resources
 
