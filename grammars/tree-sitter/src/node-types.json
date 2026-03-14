@@ -250,14 +250,6 @@
         "named": false
       },
       {
-        "type": "ripple_map_expression",
-        "named": true
-      },
-      {
-        "type": "ripple_set_expression",
-        "named": true
-      },
-      {
         "type": "true",
         "named": true
       },
@@ -2734,7 +2726,6 @@
   {
     "type": "program",
     "named": true,
-    "root": true,
     "fields": {},
     "children": {
       "multiple": true,
@@ -3322,44 +3313,6 @@
     }
   },
   {
-    "type": "ripple_map_expression",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "arguments",
-          "named": true
-        },
-        {
-          "type": "type_arguments",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "ripple_set_expression",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "arguments",
-          "named": true
-        },
-        {
-          "type": "type_arguments",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "try_statement",
     "named": true,
     "fields": {
@@ -3780,15 +3733,7 @@
     "named": false
   },
   {
-    "type": "#ripple.map",
-    "named": false
-  },
-  {
     "type": "#ripple.server",
-    "named": false
-  },
-  {
-    "type": "#ripple.set",
     "named": false
   },
   {
@@ -4069,8 +4014,7 @@
   },
   {
     "type": "comment",
-    "named": true,
-    "extra": true
+    "named": true
   },
   {
     "type": "component",

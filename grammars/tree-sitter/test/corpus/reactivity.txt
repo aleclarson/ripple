@@ -147,26 +147,30 @@ const map = new #ripple.map([['a', 1], ['b', 2]]);
       name: (identifier)
       (initializer
         (new_expression
-          constructor: (ripple_set_expression
-            (arguments
-              (array
-                (number)
-                (number)
-                (number))))))))
+          constructor: (member_expression
+            object: (ripple_namespace_identifier)
+            property: (identifier))
+          arguments: (arguments
+            (array
+              (number)
+              (number)
+              (number)))))))
   (variable_declaration
     (variable_declarator
       name: (identifier)
       (initializer
         (new_expression
-          constructor: (ripple_map_expression
-            (arguments
+          constructor: (member_expression
+            object: (ripple_namespace_identifier)
+            property: (identifier))
+          arguments: (arguments
+            (array
               (array
-                (array
-                  (string)
-                  (number))
-                (array
-                  (string)
-                  (number))))))))))
+                (string)
+                (number))
+              (array
+                (string)
+                (number)))))))))
 
 ==================
 Ripple Server/Style Member Expressions
