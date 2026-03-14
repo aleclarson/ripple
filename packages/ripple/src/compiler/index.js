@@ -5,6 +5,11 @@ import { analyze } from './phases/2-analyze/index.js';
 import { transform_client } from './phases/3-transform/client/index.js';
 import { transform_server } from './phases/3-transform/server/index.js';
 import { convert_source_map_to_mappings } from './phases/3-transform/segments.js';
+import {
+	enhance_compile_error,
+	enhance_compile_errors,
+	format_compile_error,
+} from './diagnostics.js';
 
 /**
  * Parse Ripple source code to ESTree AST
@@ -23,27 +28,31 @@ export function parse(source) {
  * @returns {object}
  */
 export function compile(source, filename, options = {}) {
-	const ast = parse_module(source, filename, undefined);
-	const analysis = analyze(ast, filename, options);
-	const result =
-		options.mode === 'server'
-			? transform_server(
-					filename,
-					source,
-					analysis,
-					options?.minify_css ?? false,
-					options?.dev ?? false,
-				)
-			: transform_client(
-					filename,
-					source,
-					analysis,
-					false,
-					options?.minify_css ?? false,
-					options?.hmr ?? false,
-				);
+	try {
+		const ast = parse_module(source, filename, undefined);
+		const analysis = analyze(ast, filename, options);
+		const result =
+			options.mode === 'server'
+				? transform_server(
+						filename,
+						source,
+						analysis,
+						options?.minify_css ?? false,
+						options?.dev ?? false,
+					)
+				: transform_client(
+						filename,
+						source,
+						analysis,
+						false,
+						options?.minify_css ?? false,
+						options?.hmr ?? false,
+					);
 
-	return result;
+		return result;
+	} catch (error) {
+		throw enhance_compile_error(/** @type {RippleCompileError} */ (error), source, filename);
+	}
 }
 
 /** @import { PostProcessingChanges, LineOffsets } from './phases/3-transform/client/index.js' */
@@ -57,33 +66,39 @@ export function compile(source, filename, options = {}) {
  * @returns {VolarMappingsResult} Volar mappings object
  */
 export function compile_to_volar_mappings(source, filename, options = {}) {
-	const errors = /** @type {RippleCompileError[]} */ ([]);
-	const comments = /** @type {AST.CommentWithLocation[]} */ ([]);
-	const ast = parse_module(source, filename, { ...options, errors, comments });
-	const analysis = analyze(ast, filename, {
-		to_ts: true,
-		loose: !!options?.loose,
-		errors,
-		comments,
-	});
-	const transformed = transform_client(
-		filename,
-		source,
-		analysis,
-		true,
-		options?.minify_css ?? false,
-	);
-
-	return {
-		...convert_source_map_to_mappings(
-			transformed.ast,
-			ast,
+	try {
+		const errors = /** @type {RippleCompileError[]} */ ([]);
+		const comments = /** @type {AST.CommentWithLocation[]} */ ([]);
+		const ast = parse_module(source, filename, { ...options, errors, comments });
+		const analysis = analyze(ast, filename, {
+			to_ts: true,
+			loose: !!options?.loose,
+			errors,
+			comments,
+		});
+		const transformed = transform_client(
+			filename,
 			source,
-			transformed.js.code,
-			transformed.js.map,
-			/** @type {PostProcessingChanges} */ (transformed.js.post_processing_changes),
-			/** @type {LineOffsets} */ (transformed.js.line_offsets),
-		),
-		errors: transformed.errors,
-	};
+			analysis,
+			true,
+			options?.minify_css ?? false,
+		);
+
+		return {
+			...convert_source_map_to_mappings(
+				transformed.ast,
+				ast,
+				source,
+				transformed.js.code,
+				transformed.js.map,
+				/** @type {PostProcessingChanges} */ (transformed.js.post_processing_changes),
+				/** @type {LineOffsets} */ (transformed.js.line_offsets),
+			),
+			errors: enhance_compile_errors(transformed.errors, source, filename),
+		};
+	} catch (error) {
+		throw enhance_compile_error(/** @type {RippleCompileError} */ (error), source, filename);
+	}
 }
+
+export { format_compile_error };

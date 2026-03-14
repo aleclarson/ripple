@@ -5,6 +5,7 @@
  */
 
 import { error } from '../../errors.js';
+import { DIAGNOSTIC_CODES } from '../../diagnostic-codes.js';
 
 const invalid_nestings = {
 	// <p> cannot contain block-level elements
@@ -156,6 +157,18 @@ export function validate_nesting(element, context, errors) {
 						element,
 						errors,
 						context.state.analysis.comments,
+						{
+							code: DIAGNOSTIC_CODES.INVALID_HTML_NESTING,
+							notes: [
+								'Browsers repair invalid HTML nesting automatically, which can break hydration and DOM updates.',
+							],
+							labels: [
+								{
+									node: parent,
+									message: `${parent_tag === tag ? 'outer ' : ''}<${parent_tag}> starts here.`,
+								},
+							],
+						},
 					);
 				} else {
 					// if my parent has a set of invalid children

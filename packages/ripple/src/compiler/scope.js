@@ -15,6 +15,7 @@ import { extract_identifiers, object, unwrap_pattern } from '../utils/ast.js';
 import { walk } from 'zimmerframe';
 import { is_reserved } from './utils.js';
 import { error } from './errors.js';
+import { DIAGNOSTIC_CODES } from './diagnostic-codes.js';
 import { IDENTIFIER_OBFUSCATION_PREFIX } from './identifier-utils.js';
 import * as b from '../utils/builders.js';
 
@@ -337,16 +338,33 @@ export class Scope {
 				node,
 				this.#error_options.loose ? this.#error_options.errors : undefined,
 				this.#error_options.comments,
+				{
+					code: DIAGNOSTIC_CODES.RESERVED_OBFUSCATED_IDENTIFIER,
+					help: `Rename the binding so it does not start with "${IDENTIFIER_OBFUSCATION_PREFIX}". That prefix is reserved for generated compiler identifiers.`,
+				},
 			);
 		}
 
 		if (this.declarations.has(node.name)) {
+			const existing_binding = this.declarations.get(node.name);
 			error(
 				`'${node.name}' has already been declared in the current scope`,
 				this.#error_options.filename,
 				node,
 				this.#error_options.loose ? this.#error_options.errors : undefined,
 				this.#error_options.comments,
+				{
+					code: DIAGNOSTIC_CODES.DUPLICATE_DECLARATION,
+					help: 'Rename one of the declarations or remove the duplicate binding.',
+					labels: existing_binding
+						? [
+								{
+									node: existing_binding.node,
+									message: `The first declaration of '${node.name}' is here.`,
+								},
+							]
+						: [],
+				},
 			);
 		}
 

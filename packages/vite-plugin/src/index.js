@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { Readable } from 'node:stream';
+import { inspect } from 'node:util';
 
 import { createRouter } from './server/router.js';
 import { createContext, runMiddlewareChain } from './server/middleware.js';
@@ -27,6 +28,172 @@ import { patch_global_fetch, is_rpc_request, handle_rpc_request } from '@ripple-
 
 // Re-export route classes
 export { RenderRoute, ServerRoute } from './routes.js';
+
+const RIPPLE_ERROR_INSPECTOR_INSTALLED = Symbol.for('ripple.error_inspector_installed');
+
+/**
+ * @typedef {{
+ * 	message: string,
+ * 	frame?: string,
+ * 	pluginCode?: string,
+ * }} RippleBuildInnerError
+ */
+
+/** @typedef {Error & { errors: RippleBuildInnerError[] }} RippleBuildError */
+/** @typedef {Error & Record<symbol, boolean>} MarkedErrorPrototype */
+
+/**
+ * @param {unknown} error
+ * @param {string} id
+ * @returns {Error | {
+ * 	name: string,
+ * 	message: string,
+ * 	plugin: string,
+ * 	id: string,
+ * 	loc: { file: string, line: number, column: number } | undefined,
+ * 	frame: string | undefined,
+ * 	code: string,
+ * 	stack: undefined,
+ * }}
+ */
+function create_ripple_plugin_error(error, id) {
+	if (!(error instanceof Error)) {
+		return /** @type {Error} */ (new Error(String(error)));
+	}
+
+	const ripple_error = /** @type {import('ripple/compiler').RippleCompileError} */ (error);
+	const loc = ripple_error.loc
+		? {
+				file: id,
+				line: ripple_error.loc.start.line,
+				column: ripple_error.loc.start.column + 1,
+			}
+		: undefined;
+
+	return {
+		name: 'RippleCompileError',
+		message: ripple_error.message,
+		plugin: 'vite-plugin-ripple',
+		id,
+		loc,
+		frame: ripple_error.ansiFrame ?? ripple_error.frame,
+		code: ripple_error.code ?? 'RIPPLE_COMPILE_ERROR',
+		stack: undefined,
+	};
+}
+
+/**
+ * @returns {boolean}
+ */
+function is_verbose_ripple_error_output_enabled() {
+	return process.argv.includes('--verbose') || process.env.RIPPLE_VERBOSE_ERRORS === '1';
+}
+
+/**
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function is_ripple_build_error(error) {
+	if (!error || typeof error !== 'object' || !('errors' in error) || !Array.isArray(error.errors)) {
+		return false;
+	}
+
+	return !!(
+		error.errors.length > 0 &&
+		error.errors.every(
+			(inner_error) =>
+				inner_error &&
+				typeof inner_error === 'object' &&
+				'plugin' in inner_error &&
+				inner_error.plugin === 'vite-plugin-ripple',
+		)
+	);
+}
+
+/**
+ * @param {RippleBuildError} error
+ * @returns {string}
+ */
+function format_ripple_build_error_output(error) {
+	const RESET = '\x1b[0m';
+	const BOLD = '\x1b[1m';
+	const RED = '\x1b[31m';
+	const WHITE = '\x1b[97m';
+
+	return error.errors
+		.map((inner_error) => {
+			const code = inner_error.pluginCode ? `[${inner_error.pluginCode}]` : '';
+			const header = `${BOLD}${RED}error${code}${RESET}${BOLD}${WHITE}: ${inner_error.message}${RESET}`;
+			return inner_error.frame ? `${header}\n${inner_error.frame}` : header;
+		})
+		.join('\n\n');
+}
+
+/**
+ * @returns {string}
+ */
+function get_ripple_build_error_inspect_prefix() {
+	return process.stderr.isTTY ? '\x1b[1A\x1b[2K\r\n' : '\n';
+}
+
+/**
+ * @param {unknown} error
+ * @returns {void}
+ */
+function strip_ripple_build_error_stack(error) {
+	if (
+		!is_verbose_ripple_error_output_enabled() &&
+		error instanceof Error &&
+		is_ripple_build_error(error)
+	) {
+		const ripple_build_error = /** @type {RippleBuildError} */ (error);
+		const formatted_message = format_ripple_build_error_output(ripple_build_error);
+
+		ripple_build_error.stack = formatted_message;
+		Object.defineProperty(ripple_build_error, inspect.custom, {
+			configurable: true,
+			value: () => `${get_ripple_build_error_inspect_prefix()}${formatted_message}\n`,
+		});
+	}
+}
+
+function install_ripple_error_inspector() {
+	const error_prototype = /** @type {MarkedErrorPrototype} */ (Error.prototype);
+
+	if (error_prototype[RIPPLE_ERROR_INSPECTOR_INSTALLED]) {
+		return;
+	}
+
+	const original_descriptor = Object.getOwnPropertyDescriptor(Error.prototype, inspect.custom);
+
+	Object.defineProperty(error_prototype, RIPPLE_ERROR_INSPECTOR_INSTALLED, {
+		value: true,
+		configurable: false,
+		enumerable: false,
+		writable: false,
+	});
+
+	Object.defineProperty(Error.prototype, inspect.custom, {
+		configurable: true,
+		get() {
+			if (!is_verbose_ripple_error_output_enabled() && is_ripple_build_error(this)) {
+				const ripple_build_error = /** @type {RippleBuildError} */ (this);
+
+				return function ripple_error_inspector() {
+					return `${get_ripple_build_error_inspect_prefix()}${format_ripple_build_error_output(ripple_build_error)}\n`;
+				};
+			}
+
+			if (original_descriptor?.get) {
+				return original_descriptor.get.call(this);
+			}
+
+			return original_descriptor?.value;
+		},
+	});
+}
+
+install_ripple_error_inspector();
 
 const VITE_FS_PREFIX = '/@fs/';
 const IS_WINDOWS = process.platform === 'win32';
@@ -334,6 +501,10 @@ export function ripple(inlineOptions = {}) {
 			// make sure our resolver runs before vite internal resolver to resolve ripple field correctly
 			enforce: 'pre',
 			api,
+
+			buildEnd(error) {
+				strip_ripple_build_error_stack(error);
+			},
 
 			async config(userConfig, { command }) {
 				isBuild = command === 'build';
@@ -1025,11 +1196,18 @@ import { hydrate, mount } from 'ripple';
 
 					const is_dev = config?.command === 'serve';
 
-					const { js, css } = await compile(code, filename, {
-						mode: ssr ? 'server' : 'client',
-						dev: is_dev,
-						hmr: is_dev && !ssr,
-					});
+					let compiled;
+					try {
+						compiled = await compile(code, filename, {
+							mode: ssr ? 'server' : 'client',
+							dev: is_dev,
+							hmr: is_dev && !ssr,
+						});
+					} catch (error) {
+						this.error(create_ripple_plugin_error(error, id));
+					}
+
+					const { js, css } = compiled;
 
 					// Track modules with #server blocks for RPC (client build only)
 					if (isBuild && !ssr && js.code.includes('_$_.rpc(')) {

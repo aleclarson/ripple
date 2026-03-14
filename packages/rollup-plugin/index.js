@@ -5,6 +5,46 @@ import { compile } from 'ripple/compiler';
 const PREFIX = '[@ripple-ts/rollup-plugin]';
 
 /**
+ * @param {unknown} error
+ * @param {string} id
+ * @returns {Error | {
+ * 	name: string,
+ * 	message: string,
+ * 	plugin: string,
+ * 	id: string,
+ * 	loc: { file: string, line: number, column: number } | undefined,
+ * 	frame: string | undefined,
+ * 	code: string,
+ * 	stack: undefined,
+ * }}
+ */
+function create_ripple_plugin_error(error, id) {
+	if (!(error instanceof Error)) {
+		return /** @type {Error} */ (new Error(String(error)));
+	}
+
+	const ripple_error = /** @type {import('ripple/compiler').RippleCompileError} */ (error);
+	const loc = ripple_error.loc
+		? {
+				file: id,
+				line: ripple_error.loc.start.line,
+				column: ripple_error.loc.start.column + 1,
+			}
+		: undefined;
+
+	return {
+		name: 'RippleCompileError',
+		message: ripple_error.message,
+		plugin: 'ripple',
+		id,
+		loc,
+		frame: ripple_error.frame,
+		code: ripple_error.code ?? 'RIPPLE_COMPILE_ERROR',
+		stack: undefined,
+	};
+}
+
+/**
  * @param [options] {Partial<import('.').Options>}
  * @returns {import('rollup').Plugin}
  */
@@ -53,7 +93,14 @@ export default function (options = {}) {
 
 			const filename = path.relative(process.cwd(), id);
 
-			const { js, css } = await compile(code, filename, id);
+			let compiled;
+			try {
+				compiled = await compile(code, filename, id);
+			} catch (error) {
+				this.error(create_ripple_plugin_error(error, id));
+			}
+
+			const { js, css } = compiled;
 
 			if (emitCss && css && css.code) {
 				const fname = id.replace(new RegExp(`\\${extension}$`), '.css');

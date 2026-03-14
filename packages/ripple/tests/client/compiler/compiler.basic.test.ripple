@@ -1,4 +1,4 @@
-import { parse, compile, compile_to_volar_mappings } from 'ripple/compiler';
+import { parse, compile, compile_to_volar_mappings, format_compile_error } from 'ripple/compiler';
 import {
 	obfuscate_identifier,
 	RIPPLE_NAMESPACE_IDENTIFIER,
@@ -536,5 +536,840 @@ export component App() {
 		);
 
 		expect(mapping).toBeDefined();
+	});
+
+	it('formats parser errors with a Rust-style code frame', () => {
+		const source = `
+export component App() {
+	let test = #ripple.track(false);
+	let test = 'hey';
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL1001]: Identifier \'test\' has already been declared',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'The first declaration of \'test\' is here.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'The second declaration of \'test\' is here.',
+			);
+			expect((error as Error & { frame?: string }).frame).toContain('--> test.ripple:4:6');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Rename one of the declarations or remove the duplicate binding.',
+			);
+			expect(
+				format_compile_error(
+					error as Error & {
+						message: string;
+						pos: number;
+						raisedAt: number;
+						end: number;
+						loc: AST.SourceLocation;
+						fileName: string;
+						type: 'fatal' | 'usage';
+					},
+					source,
+				),
+			).toBe((error as Error & { formattedMessage?: string }).formattedMessage);
+		}
+	});
+
+	it('formats parser syntax errors with diagnostic codes and help', () => {
+		const source = `
+component App() {
+	let items = [1];
+	let value = #ripple[...items,];
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL1304]: Trailing comma is not permitted after the rest element',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Remove the trailing comma after the final rest element.',
+			);
+		}
+	});
+
+	it('formats for-of initializer diagnostics with the shorter help text', () => {
+		const source = `
+component App() {
+	for (let item = 0 of items) {
+		<div />
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL1307');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Remove the initializer from the loop variable declaration.',
+			);
+		}
+	});
+
+	it('formats await keyword misuse outside async functions with code and help', () => {
+		const source = `
+component App() {
+	function test() {
+		await promise;
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL1305');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL1305]: The `await` keyword can only be used inside an async function or at the top level of a module.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Move the `await` expression into an async function or top-level module scope.',
+			);
+		}
+	});
+
+	it('formats reserved generated identifier diagnostics with help', () => {
+		const source = `
+component App() {
+	let _$_private = 1;
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL1201]: Cannot declare a variable named "_$_private" as identifiers starting with "_$_" are reserved',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Rename the binding so it does not start with "_$_". That prefix is reserved for generated compiler identifiers.',
+			);
+		}
+	});
+
+	it('collects loose parser recovery diagnostics with codes and help', () => {
+		const source = `
+let fn = <T>() => 1;
+type Example = readonly { foo: string };
+`;
+
+		const result = compile_to_volar_mappings(source, 'test.ripple', { loose: true });
+
+		expect(result.errors).toHaveLength(2);
+		expect(result.errors[0]?.code).toBe('RPL1301');
+		expect(result.errors[0]?.help).toContain('Add a trailing comma');
+		expect(result.errors[1]?.code).toBe('RPL1302');
+		expect(result.errors[1]?.help).toContain('Apply `readonly` only to array or tuple types');
+	});
+
+	it('formats parser attribute value errors with help', () => {
+		const source = `
+component App() {
+	<div class=foo></div>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL1313]: value should be either an expression or a quoted text',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Use a quoted string like `class="value"` or an expression like `class={value}`.',
+			);
+		}
+	});
+
+	it('omits pending from try help outside components', () => {
+		const source = `
+function test() {
+	try {}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Add a `catch` or `finally` block to complete the `try` statement.',
+			);
+		}
+	});
+
+	it('formats unescaped template token diagnostics with the expression-only guidance', () => {
+		const source = `
+component App() {
+	<div>></div>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL1316');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'Unexpected token `>`. Wrap it in an expression like `{">"}`.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).not.toContain(
+				'&gt;',
+			);
+		}
+	});
+
+	it('formats multiple style tag diagnostics with both style locations', () => {
+		const source = `
+component App() {
+	<style>
+		.a {
+			color: red;
+		}
+	</style>
+
+	<style>
+		.b {
+			color: blue;
+		}
+	</style>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			const formatted_message =
+				(error as Error & { formattedMessage?: string }).formattedMessage ?? '';
+			expect(formatted_message).toContain('error[RPL1318]: Components can only have one style tag');
+			expect(formatted_message).toContain('help: Merge these multiple `<style>` tags into one.');
+			expect(formatted_message.indexOf('3 |   <style>')).toBeLessThan(
+				formatted_message.indexOf('9 |   <style>'),
+			);
+		}
+	});
+
+	it('formats mismatched closing tags with help', () => {
+		const source = `
+component App() {
+	<div></span>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL1324]: Expected closing tag to match opening tag. Expected \'</div>\' but found \'</span>\'',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Make the closing tag match the most recently opened element.',
+			);
+		}
+	});
+
+	it('points unexpected closing tags at the closing tag itself', () => {
+		const source = `
+component App() {
+	</div>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL1323');
+			expect((error as Error & { frame?: string }).frame).toContain('--> test.ripple:3:2');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'3 |   </div>',
+			);
+		}
+	});
+
+	it('formats unclosed script tags with the opening tag location', () => {
+		const source = `
+component App() {
+	<head>
+		<script>console.log(1)
+	</head>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			const formatted_message =
+				(error as Error & { formattedMessage?: string }).formattedMessage ?? '';
+			expect(formatted_message).toContain(
+				'error[RPL1319]: Unclosed tag \'<script>\'. Expected \'</script>\' before end of component.',
+			);
+			expect(formatted_message).toContain('The tag should be closed before this.');
+			expect(formatted_message).toContain('The tag starts here.');
+		}
+	});
+
+	it('normalizes continue diagnostics inside components', () => {
+		const source = `
+component App() {
+	continue;
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL1325]: `continue` statements are not allowed in components',
+			);
+		}
+	});
+
+	it('formats CSS parser diagnostics with codes and help', () => {
+		const source = `
+component App() {
+	<style>
+		.foo {
+			color: red;
+			background: blue;
+	</style>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2303]: Expected }',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'4 |     .foo {',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'5 |       color: red;',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'6 |       background: blue;',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'7 |   </style>',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'8 | }',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Add the missing `}` to close the current CSS block.',
+			);
+		}
+	});
+
+	it('formats CSS identifier diagnostics with specific codes', () => {
+		const source = `
+component App() {
+	<style>
+		.1foo { color: red; }
+	</style>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2406]: Identifier directly after number',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Did you forget an operator between the number and the identifier?',
+			);
+		}
+	});
+
+	it('formats server block placement diagnostics with help', () => {
+		const source = `
+component App() {
+	#ripple.server {
+		export function load() {}
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2101]: `#ripple.server` block can only be declared at the module level.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Move the `#ripple.server` block to module scope, outside any component or function body.',
+			);
+		}
+	});
+
+	it('formats server block client reference diagnostics with help', () => {
+		const source = `
+let value = 1;
+#ripple.server {
+	export function load() {
+		return value;
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2102]: Cannot reference client-side "value" from a server block.',
+			);
+		}
+	});
+
+	it('formats server identifier misuse diagnostics with help', () => {
+		const source = `
+component App() {
+	{#ripple.server}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2103]: `#ripple.server` can only be used for member access, e.g., `#ripple.server.functionName(...)`.',
+			);
+		}
+	});
+
+	it('formats server block export limitation diagnostics with help', () => {
+		const source = `
+#ripple.server {
+	export const value = 1;
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2107]: Not implemented: Exported \'Identifier\' type is not supported in server blocks.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Only exported functions are currently supported as server block exports.',
+			);
+		}
+	});
+
+	it('formats #ripple namespace misuse diagnostics from source metadata', () => {
+		const source = `
+component App() {
+	{#ripple.array.from}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2906');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2906]: `#ripple.array.from` must be called as a function, e.g., `#ripple.array.from(...)`.',
+			);
+		}
+	});
+
+	it('formats #ripple.style misuse diagnostics from source metadata', () => {
+		const source = `
+component App() {
+	let key = 'foo';
+	<div>{#ripple.style[key]}</div>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2310');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Use `#ripple.style.className` or `#ripple.style["className"]` with a static string literal.',
+			);
+		}
+	});
+
+	it('formats tracked object misuse diagnostics from source metadata', () => {
+		const source = `
+component App() {
+	let state = #ripple.track({ foo: 1 });
+	<div>{state.foo}</div>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2402');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Read the tracked value with @state.foo instead of accessing the tracked object directly.',
+			);
+		}
+	});
+
+	it('formats var declarations in components from source metadata', () => {
+		const source = `
+component App() {
+	var count = 1;
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2601');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2601]: `var` declarations are not allowed in components, use let or const instead',
+			);
+		}
+	});
+
+	it('formats props declaration-form diagnostics from source metadata', () => {
+		const source = `
+component App(props = {}) {
+	<div />
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2602');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Use a destructured object parameter such as `component App({ value = 1 })` for component props.',
+			);
+		}
+	});
+
+	it('formats unsupported component loop diagnostics from source metadata', () => {
+		const source = `
+component App() {
+	for (;;) {}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2501');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Use for...of for template rendering, or move the loop into a helper function or effect.',
+			);
+		}
+	});
+
+	it('formats switch case diagnostics with the whole short case', () => {
+		const source = `
+component App() {
+	switch (value) {
+		case 1:
+			const a = 1;
+			break;
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			const formatted_message =
+				(error as Error & { formattedMessage?: string }).formattedMessage ?? '';
+			expect((error as Error & { code?: string }).code).toBe('RPL2502');
+			expect(formatted_message).toContain('4 |     case 1:');
+			expect(formatted_message).toContain('5 |       const a = 1;');
+			expect(formatted_message).toContain('6 |       break;');
+		}
+	});
+
+	it('formats for-of diagnostics with the whole short body', () => {
+		const source = `
+component App() {
+	for (let item of items) {
+		const a = 1;
+		break;
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			const formatted_message =
+				(error as Error & { formattedMessage?: string }).formattedMessage ?? '';
+			expect((error as Error & { code?: string }).code).toBe('RPL2503');
+			expect(formatted_message).toContain('3 |   for (let item of items) {');
+			expect(formatted_message).toContain('4 |     const a = 1;');
+			expect(formatted_message).toContain('5 |     break;');
+		}
+	});
+
+	it('formats long for-of diagnostics with head and tail context', () => {
+		const source = `
+component App() {
+	for (let item of items) {
+		const a = 1;
+		const b = 2;
+		const c = 3;
+		const d = 4;
+		break;
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			const formatted_message =
+				(error as Error & { formattedMessage?: string }).formattedMessage ?? '';
+			expect(formatted_message).toContain('3 |   for (let item of items) {');
+			expect(formatted_message).toContain('4 |     const a = 1;');
+			expect(formatted_message).toContain('5 |     const b = 2;');
+			expect(formatted_message).toContain('⋮');
+			expect(formatted_message).toContain('7 |     const d = 4;');
+			expect(formatted_message).toContain('8 |     break;');
+			expect(formatted_message).toContain('9 |   }');
+		}
+	});
+
+	it('formats long switch case diagnostics with head and tail context', () => {
+		const source = `
+component App() {
+	switch (value) {
+		case 1:
+			const a = 1;
+			const b = 2;
+			const c = 3;
+			const d = 4;
+			break;
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			const formatted_message =
+				(error as Error & { formattedMessage?: string }).formattedMessage ?? '';
+			expect(formatted_message).toContain('4 |     case 1:');
+			expect(formatted_message).toContain('5 |       const a = 1;');
+			expect(formatted_message).toContain('6 |       const b = 2;');
+			expect(formatted_message).toContain('7 |       const c = 3;');
+			expect(formatted_message).toContain('8 |       const d = 4;');
+			expect(formatted_message).toContain('9 |       break;');
+			expect(formatted_message).not.toContain('⋮');
+		}
+	});
+
+	it('formats top-level return diagnostics from source metadata', () => {
+		const source = `
+return 1;
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2603');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2603]: Return statements are not allowed at the top level of a module.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'help: Move the returned value into a function, or remove the top-level return statement.',
+			);
+		}
+	});
+
+	it('formats head attribute diagnostics from source metadata', () => {
+		const source = `
+component App() {
+	<head lang="en">
+		<title>{'test'}</title>
+	</head>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2607');
+		}
+	});
+
+	it('formats children interpolation diagnostics from source metadata', () => {
+		const source = `
+component Wrapper() {
+	<children />
+}
+
+component App() {
+	<Wrapper>{children}</Wrapper>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2617');
+		}
+	});
+
+	it('prefers children prop diagnostics over generic JSX expression errors', () => {
+		const source = `
+component App() {
+	<div children={<span />} />
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2616');
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2616]: Cannot have a `children` prop on an element',
+			);
+		}
+	});
+
+	it('formats await in client control-flow diagnostics from source metadata', () => {
+		const source = `
+component App() {
+	if (true) {
+		await promise;
+	}
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { code?: string }).code).toBe('RPL2405');
+		}
+	});
+
+	it('formats analysis errors with related notes', () => {
+		const source = `
+component App() {
+	<p>
+		<div>{'content'}</div>
+	</p>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'error[RPL2201]: Invalid HTML nesting: <div> cannot be a descendant of <p>.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'<p> starts here.',
+			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'note: Browsers repair invalid HTML nesting automatically, which can break hydration and DOM updates.',
+			);
+		}
+	});
+
+	it('uses outer wording when invalid nesting repeats the same tag', () => {
+		const source = `
+component App() {
+	<button>
+		<button>{123}</button>
+	</button>
+}
+`;
+
+		try {
+			compile(source, 'test.ripple');
+			throw new Error('Expected compile() to throw');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
+				'outer <button> starts here.',
+			);
+		}
 	});
 });

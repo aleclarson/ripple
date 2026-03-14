@@ -1,6 +1,15 @@
 /** @import * as AST from 'estree' */
 
 import { hash } from '../../utils.js';
+import { DIAGNOSTIC_CODES } from '../../diagnostic-codes.js';
+
+/**
+ * @typedef {Error & {
+ * 	pos: number,
+ * 	code?: string,
+ * 	help?: string,
+ * }} CssDiagnosticError
+ */
 
 const REGEX_MATCHER = /^[~^$*|]?=/;
 const REGEX_ATTRIBUTE_FLAGS = /^[a-zA-Z]+/;
@@ -56,7 +65,7 @@ class Parser {
 		}
 
 		if (required && (!this.loose || required_in_loose)) {
-			throw new Error(`Expected ${str}`);
+			throw create_css_error(this, `Expected ${str}`);
 		}
 
 		return false;
@@ -93,7 +102,7 @@ class Parser {
 	read_until(pattern) {
 		if (this.index >= this.template.length) {
 			if (this.loose) return '';
-			throw new Error('Unexpected end of input');
+			throw create_css_error(this, 'Unexpected end of input');
 		}
 
 		const start = this.index;
@@ -107,6 +116,40 @@ class Parser {
 		this.index = this.template.length;
 		return this.template.slice(start);
 	}
+}
+
+/**
+ * @param {Parser} parser
+ * @param {string} message
+ * @returns {CssDiagnosticError}
+ */
+function create_css_error(parser, message) {
+	const error = /** @type {CssDiagnosticError} */ (new Error(message));
+	error.pos = parser.index;
+
+	if (message === 'Expected identifier') {
+		error.code = DIAGNOSTIC_CODES.CSS_EXPECTED_IDENTIFIER;
+		error.help = 'Add a valid CSS identifier for the selector, at-rule, or property name.';
+	} else if (message === 'Expected }') {
+		error.code = DIAGNOSTIC_CODES.CSS_EXPECTED_TOKEN;
+		error.help = 'Add the missing `}` to close the current CSS block.';
+	} else if (message.startsWith('Expected ')) {
+		error.code = DIAGNOSTIC_CODES.CSS_EXPECTED_TOKEN;
+		error.help =
+			'Add the missing CSS token to complete the current selector, block, or declaration.';
+	} else if (message === 'Unexpected end of input') {
+		error.code = DIAGNOSTIC_CODES.CSS_UNEXPECTED_END_OF_INPUT;
+		error.help =
+			'Finish the current CSS rule, selector, string, or block before the style tag ends.';
+	} else if (message === 'CSS Declaration cannot be empty') {
+		error.code = DIAGNOSTIC_CODES.CSS_EMPTY_DECLARATION;
+		error.help = 'Provide a CSS value after the property name, or remove the empty declaration.';
+	} else if (message.startsWith('Invalid selector at parser.index:')) {
+		error.code = DIAGNOSTIC_CODES.CSS_INVALID_SELECTOR;
+		error.help = 'Complete the selector before starting a new selector, combinator, or block.';
+	}
+
+	return error;
 }
 
 /**
@@ -289,7 +332,7 @@ function read_declaration(parser) {
 	const value = read_value(parser);
 
 	if (!value && !property.startsWith('--') && !parser.loose) {
-		throw new Error('CSS Declaration cannot be empty');
+		throw create_css_error(parser, 'CSS Declaration cannot be empty');
 	}
 
 	const end = parser.index;
@@ -344,7 +387,7 @@ function read_value(parser) {
 		parser.index++;
 	}
 
-	throw new Error('Unexpected end of input');
+	throw create_css_error(parser, 'Unexpected end of input');
 }
 
 /**
@@ -380,7 +423,7 @@ function read_selector_list(parser, inside_pseudo_class = false) {
 		}
 	}
 
-	throw new Error('Unexpected end of input');
+	throw create_css_error(parser, 'Unexpected end of input');
 }
 
 /**
@@ -621,12 +664,12 @@ function read_selector(parser, inside_pseudo_class = false) {
 			parser.allow_whitespace();
 
 			if (parser.match(',') || (inside_pseudo_class ? parser.match(')') : parser.match('{'))) {
-				throw new Error(`Invalid selector at parser.index: ${parser.index}`);
+				throw create_css_error(parser, `Invalid selector at parser.index: ${parser.index}`);
 			}
 		}
 	}
 
-	throw new Error('Unexpected end of input');
+	throw create_css_error(parser, 'Unexpected end of input');
 }
 
 /**
@@ -659,7 +702,7 @@ function read_attribute_value(parser) {
 		parser.index++;
 	}
 
-	throw new Error('Unexpected end of input');
+	throw create_css_error(parser, 'Unexpected end of input');
 }
 
 /**
@@ -672,7 +715,7 @@ function read_identifier(parser) {
 	let identifier = '';
 
 	if (parser.match_regex(REGEX_LEADING_HYPHEN_OR_DIGIT)) {
-		throw new Error('Unexpected CSS identifier');
+		throw create_css_error(parser, 'Unexpected CSS identifier');
 	}
 
 	let escaped = false;
@@ -697,7 +740,7 @@ function read_identifier(parser) {
 	}
 
 	if (identifier === '') {
-		throw new Error('Expected identifier');
+		throw create_css_error(parser, 'Expected identifier');
 	}
 
 	return identifier;

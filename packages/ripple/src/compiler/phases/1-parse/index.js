@@ -4,6 +4,7 @@
 @import { Parse } from '#parser'
 @import { RipplePluginConfig } from '#compiler';
 @import { ParseOptions, RippleCompileError } from 'ripple/compiler'
+@import { CssDiagnosticError } from './style.js'
  */
 
 import * as acorn from 'acorn';
@@ -12,6 +13,7 @@ import { parse_style } from './style.js';
 import { walk } from 'zimmerframe';
 import { regex_newline_characters } from '../../../utils/patterns.js';
 import { error } from '../../errors.js';
+import { DIAGNOSTIC_CODES } from '../../diagnostic-codes.js';
 
 /**
  * @typedef {(BaseParser: typeof acorn.Parser) => typeof acorn.Parser} AcornPlugin
@@ -35,6 +37,64 @@ const BINDING_TYPES = {
 	BIND_SIMPLE_CATCH: 4, // Simple (identifier pattern) catch binding
 	BIND_OUTSIDE: 5, // Special case for function names as bound inside the function
 };
+
+const SCOPE_TOP = 1;
+const SCOPE_FUNCTION = 2;
+const SCOPE_SIMPLE_CATCH = 32;
+const SCOPE_CLASS_STATIC_BLOCK = 256;
+const SCOPE_VAR = SCOPE_TOP | SCOPE_FUNCTION | SCOPE_CLASS_STATIC_BLOCK;
+
+function create_binding_location_scope() {
+	return {
+		lexical: new Map(),
+		var: new Map(),
+		functions: new Map(),
+	};
+}
+
+/**
+ * @param {string} error_message
+ * @returns {import('../../errors.js').DiagnosticOptions | undefined}
+ */
+function get_upstream_parser_diagnostic_options(error_message) {
+	if (error_message.includes('This syntax is reserved in files with the .mts or .cts extension')) {
+		return {
+			code: DIAGNOSTIC_CODES.RESERVED_ARROW_TYPE_PARAM,
+			help: 'Add a trailing comma to the type parameter list, for example `<T,>() => ...`, to keep this syntax valid in `.mts` and `.cts` files.',
+		};
+	}
+
+	if (
+		error_message.includes(
+			"'readonly' type modifier is only permitted on array and tuple literal types.",
+		)
+	) {
+		return {
+			code: DIAGNOSTIC_CODES.READONLY_NON_ARRAY_TUPLE_TYPE,
+			help: 'Apply `readonly` only to array or tuple types, or remove the modifier if you are annotating another kind of type.',
+		};
+	}
+
+	if (
+		error_message.includes('Unsyntactic continue') ||
+		error_message.includes('`continue` statements are not allowed in components')
+	) {
+		return {
+			code: DIAGNOSTIC_CODES.CONTINUE_IN_COMPONENT,
+			help: 'Move loop control into a helper function or restructure the component template logic.',
+		};
+	}
+
+	if (
+		error_message.includes('Unsyntactic break') ||
+		error_message.includes('`break` statements are not allowed in components')
+	) {
+		return {
+			code: DIAGNOSTIC_CODES.BREAK_IN_COMPONENT,
+			help: 'Move loop control into a helper function or restructure the component template logic.',
+		};
+	}
+}
 
 /**
  * @this {Parse.DestructuringErrors}
@@ -171,6 +231,10 @@ function RipplePlugin(config) {
 			#errors = undefined;
 			/** @type {string | null} */
 			#filename = null;
+			/** @type {Array<{ lexical: Map<string, number>, var: Map<string, number>, functions: Map<string, number> }>} */
+			_binding_locations = [];
+			/** @type {number | null} */
+			_pending_duplicate_binding = null;
 
 			/**
 			 * @param {Parse.Options} options
@@ -181,13 +245,62 @@ function RipplePlugin(config) {
 				this.#loose = options?.rippleOptions.loose === true;
 				this.#errors = options?.rippleOptions.errors;
 				this.#filename = options?.rippleOptions.filename || null;
+				this._binding_locations = this.scopeStack.map(() => create_binding_location_scope());
+			}
+
+			/**
+			 * @param {number} position
+			 * @param {string | { message?: string }} message
+			 * @returns {never}
+			 */
+			raise(position, message) {
+				const error_message =
+					typeof message === 'string'
+						? message
+						: typeof message?.message === 'string'
+							? message.message
+							: String(message);
+				const diagnostic_options = get_upstream_parser_diagnostic_options(error_message);
+
+				try {
+					super.raise(position, error_message);
+				} catch (caught_error) {
+					if (caught_error instanceof Error && diagnostic_options) {
+						const diagnostic_error = /** @type {RippleCompileError} */ (caught_error);
+						diagnostic_error.code ??= diagnostic_options.code;
+						diagnostic_error.help ??= diagnostic_options.help;
+						diagnostic_error.notes ??= diagnostic_options.notes;
+					}
+
+					throw caught_error;
+				}
+
+				throw new Error('Unreachable parser raise');
+			}
+
+			/**
+			 * @param {number} flags
+			 * @returns {void}
+			 */
+			enterScope(flags) {
+				super.enterScope(flags);
+				this._binding_locations ??= [];
+				this._binding_locations.push(create_binding_location_scope());
+			}
+
+			/** @returns {void} */
+			exitScope() {
+				super.exitScope();
+				this._binding_locations.pop();
 			}
 
 			/**
 			 * @param {number} position
 			 * @param {string} message
+			 * @param {import('../../errors.js').DiagnosticOptions} [diagnostic_options]
+			 * @returns {void}
 			 */
-			#report_recoverable_error(position, message) {
+			#report_recoverable_error(position, message, diagnostic_options) {
 				const start = Math.max(0, Math.min(position, this.input.length));
 				const end = Math.min(this.input.length, start + 1);
 				const start_loc = acorn.getLineInfo(this.input, start);
@@ -205,7 +318,253 @@ function RipplePlugin(config) {
 						},
 					}),
 					this.#loose ? this.#errors : undefined,
+					undefined,
+					diagnostic_options,
 				);
+			}
+
+			/**
+			 * @param {number} position
+			 * @param {string} message
+			 * @param {import('../../errors.js').DiagnosticOptions} diagnostic_options
+			 * @returns {never}
+			 */
+			#raise_diagnostic(position, message, diagnostic_options) {
+				try {
+					this.raise(position, message);
+				} catch (caught_error) {
+					if (caught_error instanceof Error) {
+						const diagnostic_error = /** @type {RippleCompileError} */ (caught_error);
+						diagnostic_error.code ??= diagnostic_options.code;
+						diagnostic_error.help ??= diagnostic_options.help;
+						diagnostic_error.notes ??= diagnostic_options.notes;
+						diagnostic_error.labels ??= [];
+
+						for (const label of diagnostic_options.labels ?? []) {
+							if (!label.node.loc) {
+								continue;
+							}
+
+							diagnostic_error.labels.push({
+								kind: label.kind ?? 'secondary',
+								message: label.message,
+								pos: label.node.start ?? undefined,
+								end: label.node.end ?? undefined,
+								loc: {
+									start: {
+										line: label.node.loc.start.line,
+										column: label.node.loc.start.column,
+									},
+									end: {
+										line: label.node.loc.end.line,
+										column: label.node.loc.end.column,
+									},
+								},
+							});
+						}
+					}
+
+					throw caught_error;
+				}
+			}
+
+			/**
+			 * @param {number} start
+			 * @param {CssDiagnosticError} css_error
+			 * @returns {void}
+			 */
+			#throw_css_parse_error(start, css_error) {
+				const error_position = start + (css_error.pos ?? 0);
+				const end = Math.min(this.input.length, error_position + 1);
+
+				error(
+					css_error.message,
+					this.#filename,
+					/** @type {AST.NodeWithLocation} */ ({
+						start: error_position,
+						end,
+						loc: {
+							start: acorn.getLineInfo(this.input, error_position),
+							end: acorn.getLineInfo(this.input, end),
+						},
+					}),
+					undefined,
+					undefined,
+					{
+						code: css_error.code,
+						help: css_error.help,
+					},
+				);
+			}
+
+			/**
+			 * @param {string} name
+			 * @param {number} start
+			 * @returns {AST.NodeWithLocation}
+			 */
+			#create_binding_location_node(name, start) {
+				const end = Math.min(this.input.length, start + name.length);
+				return {
+					start,
+					end,
+					loc: {
+						start: acorn.getLineInfo(this.input, start),
+						end: acorn.getLineInfo(this.input, end),
+					},
+				};
+			}
+
+			/**
+			 * @param {string} name
+			 * @param {0 | 1 | 2 | 3 | 4 | 5} binding_type
+			 * @returns {number | null}
+			 */
+			#get_duplicate_binding_location(name, binding_type) {
+				const treat_functions_as_var = /** @type {{ treatFunctionsAsVar: boolean }} */ (
+					/** @type {unknown} */ (this)
+				).treatFunctionsAsVar;
+
+				if (binding_type === BINDING_TYPES.BIND_LEXICAL) {
+					const scope = this.currentScope();
+					const locations = this._binding_locations[this._binding_locations.length - 1];
+
+					if (locations.lexical.has(name)) {
+						return locations.lexical.get(name) ?? null;
+					}
+
+					if (treat_functions_as_var && scope.functions.includes(name)) {
+						return locations.functions.get(name) ?? null;
+					}
+
+					if (scope.var.includes(name)) {
+						return locations.var.get(name) ?? null;
+					}
+
+					return null;
+				}
+
+				if (binding_type === BINDING_TYPES.BIND_SIMPLE_CATCH) {
+					return null;
+				}
+
+				if (binding_type === BINDING_TYPES.BIND_FUNCTION) {
+					const scope = this.currentScope();
+					const locations = this._binding_locations[this._binding_locations.length - 1];
+
+					if (scope.lexical.includes(name)) {
+						return locations.lexical.get(name) ?? null;
+					}
+
+					if (!treat_functions_as_var && scope.var.includes(name)) {
+						return locations.var.get(name) ?? null;
+					}
+
+					return null;
+				}
+
+				for (let index = this.scopeStack.length - 1; index >= 0; index -= 1) {
+					const scope = this.scopeStack[index];
+					const locations = this._binding_locations[index];
+
+					if (
+						(scope.lexical.includes(name) &&
+							!(scope.flags & SCOPE_SIMPLE_CATCH && scope.lexical[0] === name)) ||
+						(!this.treatFunctionsAsVarInScope(scope) && scope.functions.includes(name))
+					) {
+						return locations.lexical.get(name) ?? locations.functions.get(name) ?? null;
+					}
+
+					if (scope.flags & SCOPE_VAR) {
+						break;
+					}
+				}
+
+				return null;
+			}
+
+			/**
+			 * @param {string} name
+			 * @param {0 | 1 | 2 | 3 | 4 | 5} binding_type
+			 * @param {number} pos
+			 * @returns {void}
+			 */
+			#record_binding_location(name, binding_type, pos) {
+				if (binding_type === BINDING_TYPES.BIND_LEXICAL) {
+					this._binding_locations[this._binding_locations.length - 1].lexical.set(name, pos);
+					return;
+				}
+
+				if (binding_type === BINDING_TYPES.BIND_SIMPLE_CATCH) {
+					this._binding_locations[this._binding_locations.length - 1].lexical.set(name, pos);
+					return;
+				}
+
+				if (binding_type === BINDING_TYPES.BIND_FUNCTION) {
+					this._binding_locations[this._binding_locations.length - 1].functions.set(name, pos);
+					return;
+				}
+
+				for (let index = this.scopeStack.length - 1; index >= 0; index -= 1) {
+					const scope = this.scopeStack[index];
+					this._binding_locations[index].var.set(name, pos);
+					if (scope.flags & SCOPE_VAR) {
+						break;
+					}
+				}
+			}
+
+			/**
+			 * @param {RippleCompileError} error
+			 * @param {string} name
+			 * @returns {void}
+			 */
+			#apply_duplicate_binding_diagnostic(error, name) {
+				const previous_position = this._pending_duplicate_binding;
+				if (previous_position == null) {
+					return;
+				}
+
+				error.code = DIAGNOSTIC_CODES.DUPLICATE_DECLARATION;
+				error.help = 'Rename one of the declarations or remove the duplicate binding.';
+				error.end = (error.pos ?? 0) + name.length;
+				error.loc = undefined;
+				error.labels = [
+					{
+						kind: 'secondary',
+						message: `The first declaration of '${name}' is here.`,
+						...this.#create_binding_location_node(name, previous_position),
+					},
+				];
+			}
+
+			/**
+			 * @param {string} name
+			 * @param {0 | 1 | 2 | 3 | 4 | 5} binding_type
+			 * @param {number} pos
+			 * @returns {void}
+			 */
+			declareName(name, binding_type, pos) {
+				const previous_position = this.#get_duplicate_binding_location(name, binding_type);
+				this._pending_duplicate_binding = previous_position;
+
+				try {
+					const result = super.declareName(name, binding_type, pos);
+					this.#record_binding_location(name, binding_type, pos);
+					return result;
+				} catch (caught_error) {
+					if (
+						caught_error instanceof Error &&
+						caught_error.message.includes('has already been declared')
+					) {
+						this.#apply_duplicate_binding_diagnostic(
+							/** @type {RippleCompileError} */ (caught_error),
+							name,
+						);
+					}
+					throw caught_error;
+				} finally {
+					this._pending_duplicate_binding = null;
+				}
 			}
 
 			/**
@@ -223,7 +582,45 @@ function RipplePlugin(config) {
 							: String(message);
 
 				if (error_message.includes('has already been declared')) {
-					this.#report_recoverable_error(position, error_message);
+					const pending_name = error_message.match(
+						/Identifier '([^']+)' has already been declared/,
+					)?.[1];
+					const previous_position = this._pending_duplicate_binding;
+					this.#report_recoverable_error(position, error_message, {
+						code: DIAGNOSTIC_CODES.DUPLICATE_DECLARATION,
+						help: 'Rename one of the declarations or remove the duplicate binding.',
+						labels:
+							pending_name && previous_position != null
+								? [
+										{
+											node: this.#create_binding_location_node(pending_name, previous_position),
+											message: `The first declaration of '${pending_name}' is here.`,
+										},
+									]
+								: [],
+					});
+					return;
+				}
+
+				if (
+					error_message.includes('This syntax is reserved in files with the .mts or .cts extension')
+				) {
+					this.#report_recoverable_error(position, error_message, {
+						code: DIAGNOSTIC_CODES.RESERVED_ARROW_TYPE_PARAM,
+						help: 'Add a trailing comma to the type parameter list, for example `<T,>() => ...`, to keep this syntax valid in `.mts` and `.cts` files.',
+					});
+					return;
+				}
+
+				if (
+					error_message.includes(
+						"'readonly' type modifier is only permitted on array and tuple literal types.",
+					)
+				) {
+					this.#report_recoverable_error(position, error_message, {
+						code: DIAGNOSTIC_CODES.READONLY_NON_ARRAY_TUPLE_TYPE,
+						help: 'Apply `readonly` only to array or tuple types, or remove the modifier if you are annotating another kind of type.',
+					});
 					return;
 				}
 
@@ -246,6 +643,11 @@ function RipplePlugin(config) {
 						this.#filename,
 						node,
 						this.#errors,
+						undefined,
+						{
+							code: DIAGNOSTIC_CODES.RESERVED_ARROW_TYPE_PARAM,
+							help: 'Add a trailing comma to the type parameter list, for example `<T,>() => ...`, to keep this syntax valid in `.mts` and `.cts` files.',
+						},
 					);
 				}
 			}
@@ -270,6 +672,11 @@ function RipplePlugin(config) {
 						this.#filename,
 						typeAnnotation,
 						this.#errors,
+						undefined,
+						{
+							code: DIAGNOSTIC_CODES.READONLY_NON_ARRAY_TUPLE_TYPE,
+							help: 'Apply `readonly` only to array or tuple types, or remove the modifier if you are annotating another kind of type.',
+						},
 					);
 				}
 			}
@@ -710,70 +1117,60 @@ function RipplePlugin(config) {
 				}
 				if (code === 64) {
 					// @ character
-					// Look ahead to see if this is followed by a valid identifier character or opening paren
-					if (this.pos + 1 < this.input.length) {
-						const nextChar = this.input.charCodeAt(this.pos + 1);
+					const currentType = this.type;
+					/**
+					 * @param {Parse.TokenType} type
+					 * @param {Parse.Parser} parser
+					 * @param {Parse.TokTypes} tt
+					 * @returns {boolean}
+					 */
+					function inExpression(type, parser, tt) {
+						return (
+							parser.exprAllowed ||
+							type === tt.braceL ||
+							type === tt.parenL ||
+							type === tt.eq ||
+							type === tt.comma ||
+							type === tt.colon ||
+							type === tt.question ||
+							type === tt.logicalOR ||
+							type === tt.logicalAND ||
+							type === tt.dot ||
+							type === tt.questionDot
+						);
+					}
 
-						// Check if this is @( for unboxing expression syntax
-						if (nextChar === 40) {
-							// ( character
-							this.pos += 2; // skip '@('
-							return this.finishToken(tt.parenL, '@(');
-						}
+					/**
+					 * @param {Parse.Parser} parser
+					 * @param {Parse.TokTypes} tt
+					 * @returns {boolean}
+					 */
+					function inAwait(parser, tt) {
+						return currentType === tt.name &&
+							parser.value === 'await' &&
+							parser.canAwait &&
+							parser.preToken
+							? inExpression(parser.preToken, parser, tt)
+							: false;
+					}
 
-						// Check if the next character can start an identifier
-						if (
-							(nextChar >= 65 && nextChar <= 90) || // A-Z
-							(nextChar >= 97 && nextChar <= 122) || // a-z
+					const is_expression_at = inExpression(currentType, this, tt) || inAwait(this, tt);
+					const nextChar =
+						this.pos + 1 < this.input.length ? this.input.charCodeAt(this.pos + 1) : -1;
+
+					if (nextChar === 40 && is_expression_at) {
+						this.pos += 2;
+						return this.finishToken(tt.parenL, '@(');
+					}
+
+					if (
+						((nextChar >= 65 && nextChar <= 90) ||
+							(nextChar >= 97 && nextChar <= 122) ||
 							nextChar === 95 ||
-							nextChar === 36
-						) {
-							// _ or $
-
-							// Check if we're in an expression context
-							// In JSX expressions, inside parentheses, assignments, etc.
-							// we want to treat @ as an identifier prefix rather than decorator
-							const currentType = this.type;
-							/**
-							 * @param {Parse.TokenType} type
-							 * @param {Parse.Parser} parser
-							 * @param {Parse.TokTypes} tt
-							 * @returns {boolean}
-							 */
-							function inExpression(type, parser, tt) {
-								return (
-									parser.exprAllowed ||
-									type === tt.braceL || // Inside { }
-									type === tt.parenL || // Inside ( )
-									type === tt.eq || // After =
-									type === tt.comma || // After ,
-									type === tt.colon || // After :
-									type === tt.question || // After ?
-									type === tt.logicalOR || // After ||
-									type === tt.logicalAND || // After &&
-									type === tt.dot || // After . (for member expressions like obj.@prop)
-									type === tt.questionDot // After ?. (for optional chaining like obj?.@prop)
-								);
-							}
-
-							/**
-							 * @param {Parse.Parser} parser
-							 * @param {Parse.TokTypes} tt
-							 * @returns {boolean}
-							 */
-							function inAwait(parser, tt) {
-								return currentType === tt.name &&
-									parser.value === 'await' &&
-									parser.canAwait &&
-									parser.preToken
-									? inExpression(parser.preToken, parser, tt)
-									: false;
-							}
-
-							if (inExpression(currentType, this, tt) || inAwait(this, tt)) {
-								return this.readAtIdentifier();
-							}
-						}
+							nextChar === 36) &&
+						is_expression_at
+					) {
+						return this.readAtIdentifier();
 					}
 				}
 				return super.getTokenFromCode(code);
@@ -803,10 +1200,6 @@ function RipplePlugin(config) {
 					} else {
 						break;
 					}
-				}
-
-				if (word === '') {
-					this.raise(start, 'Invalid @ identifier');
 				}
 
 				// Return the full identifier including @
@@ -1107,7 +1500,14 @@ function RipplePlugin(config) {
 						const element = this.parseSpread();
 						node.elements.push(element);
 						if (this.type === tt.comma && this.input.charCodeAt(this.pos) === 93) {
-							this.raise(this.pos, 'Trailing comma is not permitted after the rest element');
+							this.#raise_diagnostic(
+								this.pos,
+								'Trailing comma is not permitted after the rest element',
+								{
+									code: DIAGNOSTIC_CODES.TRAILING_COMMA_AFTER_REST_ELEMENT,
+									help: 'Remove the trailing comma after the final rest element.',
+								},
+							);
 						}
 					} else {
 						// Regular element
@@ -1142,7 +1542,14 @@ function RipplePlugin(config) {
 						const prop = this.parseSpread();
 						node.properties.push(prop);
 						if (this.type === tt.comma && this.input.charCodeAt(this.pos) === 125) {
-							this.raise(this.pos, 'Trailing comma is not permitted after the rest element');
+							this.#raise_diagnostic(
+								this.pos,
+								'Trailing comma is not permitted after the rest element',
+								{
+									code: DIAGNOSTIC_CODES.TRAILING_COMMA_AFTER_REST_ELEMENT,
+									help: 'Remove the trailing comma after the final rest element.',
+								},
+							);
 						}
 					} else {
 						// Regular property
@@ -1311,11 +1718,6 @@ function RipplePlugin(config) {
 						else if (this.options.ecmaVersion >= 9)
 							/** @type {AST.ForOfStatement} */ (node).await = false;
 					}
-					if (startsWithLet && isForOf)
-						this.raise(
-							/** @type {AST.NodeWithLocation} */ (init_expr).start,
-							"The left-hand side of a for-of loop may not start with 'let'.",
-						);
 					const init = this.toAssignable(init_expr, false, refDestructuringErrors);
 					this.checkLValPattern(init);
 					return this.parseForInWithIndex(
@@ -1370,9 +1772,15 @@ function RipplePlugin(config) {
 						init.kind !== 'var' ||
 						init.declarations[0].id.type !== 'Identifier')
 				) {
-					this.raise(
+					this.#raise_diagnostic(
 						/** @type {AST.NodeWithLocation} */ (init).start,
 						`${isForIn ? 'for-in' : 'for-of'} loop variable declaration may not have an initializer`,
+						{
+							code: DIAGNOSTIC_CODES.FOR_LOOP_VARIABLE_INITIALIZER,
+							help: isForIn
+								? 'Remove the initializer from the loop variable declaration and initialize it before the loop if needed.'
+								: 'Remove the initializer from the loop variable declaration.',
+						},
 					);
 				}
 
@@ -1392,7 +1800,10 @@ function RipplePlugin(config) {
 							/** @type {AST.Identifier} */ (/** @type {AST.ForOfStatement} */ (node).index)
 								.type !== 'Identifier'
 						) {
-							this.raise(this.start, 'Expected identifier after "index" keyword');
+							this.#raise_diagnostic(this.start, 'Expected identifier after "index" keyword', {
+								code: DIAGNOSTIC_CODES.FOR_OF_EXPECTED_INDEX_IDENTIFIER,
+								help: 'The `index` clause only accepts a plain variable name, for example `for (let item of items; index i)`, not an expression like `item.id`.',
+							});
 						}
 						this.eat(tt.semi);
 					}
@@ -1403,7 +1814,10 @@ function RipplePlugin(config) {
 					}
 
 					if (this.isContextual('index')) {
-						this.raise(this.start, '"index" must come before "key" in for-of loop');
+						this.#raise_diagnostic(this.start, '"index" must come before "key" in for-of loop', {
+							code: DIAGNOSTIC_CODES.FOR_OF_INDEX_ORDER,
+							help: 'Write the clauses in the order `; index name; key expr`.',
+						});
 					}
 				} else if (!isForIn) {
 					// Set index to null for standard for-of loops
@@ -1428,9 +1842,13 @@ function RipplePlugin(config) {
 					// Also allow string literal names: { component 'name'() { ... } }
 					const nextChars = this.input.slice(this.pos).match(/^\s*(?:(\w+)\s*[(<]|\[|['"])/);
 					if (!nextChars) {
-						this.raise(
+						this.#raise_diagnostic(
 							ref.start,
 							'"component" is a Ripple keyword and cannot be used as an identifier',
+							{
+								code: DIAGNOSTIC_CODES.RIPPLE_KEYWORD_AS_IDENTIFIER,
+								help: 'Rename the identifier.',
+							},
 						);
 					}
 				}
@@ -1460,9 +1878,13 @@ function RipplePlugin(config) {
 					node.html = true;
 					this.next();
 					if (this.type === tt.braceR) {
-						this.raise(
+						this.#raise_diagnostic(
 							this.start,
 							'"html" is a Ripple keyword and must be used in the form {html some_content}',
+							{
+								code: DIAGNOSTIC_CODES.HTML_KEYWORD_MISUSE,
+								help: 'Use the HTML insertion syntax `{html value}` or rename the identifier if you meant a normal variable.',
+							},
 						);
 					}
 					if (this.type.label === '@') {
@@ -1520,9 +1942,13 @@ function RipplePlugin(config) {
 					if (this.value === 'ref') {
 						this.next();
 						if (this.type === tt.braceR) {
-							this.raise(
+							this.#raise_diagnostic(
 								this.start,
 								'"ref" is a Ripple keyword and must be used in the form {ref fn}',
+								{
+									code: DIAGNOSTIC_CODES.REF_KEYWORD_MISUSE,
+									help: 'Use the ref binding syntax `{ref callback}` or rename the identifier if you meant a normal variable.',
+								},
 							);
 						}
 						/** @type {AST.RefAttribute} */ (node).argument = this.parseMaybeAssign();
@@ -1697,7 +2123,14 @@ function RipplePlugin(config) {
 					case tt.string:
 						return this.parseExprAtom();
 					default:
-						this.raise(this.start, 'value should be either an expression or a quoted text');
+						this.#raise_diagnostic(
+							this.start,
+							'value should be either an expression or a quoted text',
+							{
+								code: DIAGNOSTIC_CODES.ATTRIBUTE_VALUE_EXPECTED_EXPRESSION_OR_QUOTED_TEXT,
+								help: 'Use a quoted string like `class="value"` or an expression like `class={value}`.',
+							},
+						);
 				}
 			}
 
@@ -1735,9 +2168,16 @@ function RipplePlugin(config) {
 				node.finalizer = this.eat(tt._finally) ? this.parseBlock() : null;
 
 				if (!node.handler && !node.finalizer && !node.pending) {
-					this.raise(
+					const is_inside_component = this.#path.some((ancestor) => ancestor.type === 'Component');
+					this.#raise_diagnostic(
 						/** @type {AST.NodeWithLocation} */ (node).start,
 						'Missing catch or finally clause',
+						{
+							code: DIAGNOSTIC_CODES.TRY_MISSING_CATCH_OR_FINALLY,
+							help: is_inside_component
+								? 'Add a `catch`, `finally`, or Ripple `pending` block to complete the `try` statement.'
+								: 'Add a `catch` or `finally` block to complete the `try` statement.',
+						},
 					);
 				}
 				return this.finishNode(node, 'TryStatement');
@@ -1753,7 +2193,11 @@ function RipplePlugin(config) {
 					chunkStart = this.pos;
 
 				while (true) {
-					if (this.pos >= this.input.length) this.raise(this.start, 'Unterminated JSX contents');
+					if (this.pos >= this.input.length)
+						this.#raise_diagnostic(this.start, 'Unterminated JSX contents', {
+							code: DIAGNOSTIC_CODES.UNTERMINATED_JSX_CONTENTS,
+							help: 'Close the open element or expression before the component ends.',
+						});
 					let ch = this.input.charCodeAt(this.pos);
 
 					switch (ch) {
@@ -1866,17 +2310,18 @@ function RipplePlugin(config) {
 							) {
 								return original.readToken.call(this, ch);
 							}
-							this.raise(
+							const expression_example = ch === 62 ? '{">"}' : '{"}"}';
+							this.#raise_diagnostic(
 								this.pos,
 								'Unexpected token `' +
 									this.input[this.pos] +
-									'`. Did you mean `' +
-									(ch === 62 ? '&gt;' : '&rbrace;') +
-									'` or ' +
-									'`{"' +
-									this.input[this.pos] +
-									'"}' +
-									'`?',
+									'`. Wrap it in an expression like `' +
+									expression_example +
+									'`.',
+								{
+									code: DIAGNOSTIC_CODES.UNEXPECTED_TEMPLATE_TOKEN_SUGGESTION,
+									help: 'Wrap the character in an expression like `' + expression_example + '`.',
+								},
 							);
 						}
 
@@ -1930,9 +2375,13 @@ function RipplePlugin(config) {
 
 					if (open.selfClosing) {
 						const tagName = namespace_node.namespace.name + ':' + namespace_node.name.name;
-						this.raise(
+						this.#raise_diagnostic(
 							open.start,
 							`TSX compatibility elements cannot be self-closing. '<${tagName} />' must have a closing tag '</${tagName}>'.`,
+							{
+								code: DIAGNOSTIC_CODES.TSX_COMPAT_SELF_CLOSING,
+								help: 'Write an explicit closing tag for the TSX compatibility element.',
+							},
 						);
 					}
 				} else {
@@ -2049,9 +2498,14 @@ function RipplePlugin(config) {
 						} else {
 							// No closing tag
 							if (!this.#loose) {
-								this.raise(
+								this.#raise_diagnostic(
 									open.end,
 									"Unclosed tag '<script>'. Expected '</script>' before end of component.",
+									{
+										code: DIAGNOSTIC_CODES.UNCLOSED_SCRIPT_TAG,
+										help: 'Add the missing closing tag.',
+										labels: [{ node: open, message: 'The tag starts here.' }],
+									},
 								);
 							}
 							/** @type {AST.Element} */ (element).unclosed = true;
@@ -2068,13 +2522,36 @@ function RipplePlugin(config) {
 						const component = /** @type {AST.Component} */ (
 							this.#path.findLast((n) => n.type === 'Component')
 						);
-						const parsed_css = parse_style(content, { loose: this.#loose });
+						let parsed_css;
+						try {
+							parsed_css = parse_style(content, { loose: this.#loose });
+						} catch (css_error) {
+							this.#throw_css_parse_error(start, /** @type {CssDiagnosticError} */ (css_error));
+							throw css_error;
+						}
 
 						if (!inside_head) {
 							if (component.css !== null) {
-								throw new Error('Components can only have one style tag');
+								const existing_style_element = /** @type {AST.Element | undefined} */ (
+									/** @type {{ style_element?: AST.Element } | undefined} */ (component.metadata)
+										?.style_element
+								);
+								this.#raise_diagnostic(open.start, 'Components can only have one style tag', {
+									code: DIAGNOSTIC_CODES.MULTIPLE_STYLE_TAGS,
+									help: 'Merge these multiple `<style>` tags into one.',
+									labels: !existing_style_element
+										? []
+										: [
+												{
+													node: existing_style_element,
+												},
+											],
+								});
 							}
 							component.css = parsed_css;
+							component.metadata ??= { path: [] };
+							/** @type {{ style_element?: AST.Element }} */ (component.metadata).style_element =
+								/** @type {AST.Element} */ (element);
 							/** @type {AST.Element} */ (element).metadata.styleScopeHash = parsed_css.hash;
 						}
 
@@ -2111,9 +2588,14 @@ function RipplePlugin(config) {
 							this.#path.pop();
 						} else {
 							if (!this.#loose) {
-								this.raise(
+								this.#raise_diagnostic(
 									open.end,
 									"Unclosed tag '<style>'. Expected '</style>' before end of component.",
+									{
+										code: DIAGNOSTIC_CODES.UNCLOSED_STYLE_TAG,
+										help: 'Add the missing closing tag.',
+										labels: [{ node: open, message: 'The tag starts here.' }],
+									},
 								);
 							}
 							/** @type {AST.Element} */ (element).unclosed = true;
@@ -2147,7 +2629,14 @@ function RipplePlugin(config) {
 							this.#path.pop();
 
 							const raise_error = () => {
-								this.raise(this.start, `Expected closing tag '</tsx:${element.kind}>'`);
+								this.#raise_diagnostic(
+									this.start,
+									`Expected closing tag '</tsx:${element.kind}>'`,
+									{
+										code: DIAGNOSTIC_CODES.EXPECTED_TSX_COMPAT_CLOSING_TAG,
+										help: 'Close the TSX compatibility element with the matching `</tsx:...>` tag.',
+									},
+								);
 							};
 
 							this.next();
@@ -2176,9 +2665,19 @@ function RipplePlugin(config) {
 							// Check if this element was properly closed
 							if (!this.#loose) {
 								const tagName = this.getElementName(element.id);
-								this.raise(
+								this.#raise_diagnostic(
 									this.start,
 									`Unclosed tag '<${tagName}>'. Expected '</${tagName}>' before end of component.`,
+									{
+										code: DIAGNOSTIC_CODES.UNCLOSED_TAG,
+										help: 'Add the missing closing tag.',
+										labels: [
+											{
+												node: element.openingElement,
+												message: 'The tag starts here.',
+											},
+										],
+									},
 								);
 							} else {
 								element.unclosed = true;
@@ -2224,10 +2723,20 @@ function RipplePlugin(config) {
 
 				if (!inside_func) {
 					if (this.type.label === 'continue') {
-						throw new Error('`continue` statements are not allowed in components');
+						this.#raise_diagnostic(
+							this.start,
+							'`continue` statements are not allowed in components',
+							{
+								code: DIAGNOSTIC_CODES.CONTINUE_IN_COMPONENT,
+								help: 'Move loop control into a helper function or restructure the component template logic.',
+							},
+						);
 					}
 					if (this.type.label === 'break') {
-						throw new Error('`break` statements are not allowed in components');
+						this.#raise_diagnostic(this.start, '`break` statements are not allowed in components', {
+							code: DIAGNOSTIC_CODES.BREAK_IN_COMPONENT,
+							help: 'Move loop control into a helper function or restructure the component template logic.',
+						});
 					}
 				}
 
@@ -2319,7 +2828,10 @@ function RipplePlugin(config) {
 							!currentElement ||
 							(currentElement.type !== 'Element' && currentElement.type !== 'TsxCompat')
 						) {
-							this.raise(this.start, 'Unexpected closing tag');
+							this.#raise_diagnostic(startPos, 'Unexpected closing tag', {
+								code: DIAGNOSTIC_CODES.UNEXPECTED_CLOSING_TAG,
+								help: 'Remove the extra closing tag or add its matching opening tag.',
+							});
 						}
 
 						/** @type {string | null} */
@@ -2344,9 +2856,13 @@ function RipplePlugin(config) {
 
 						if (openingTagName !== closingTagName) {
 							if (!this.#loose) {
-								this.raise(
+								this.#raise_diagnostic(
 									closingElement.start,
 									`Expected closing tag to match opening tag. Expected '</${openingTagName}>' but found '</${closingTagName}>'`,
+									{
+										code: DIAGNOSTIC_CODES.MISMATCHED_CLOSING_TAG,
+										help: 'Make the closing tag match the most recently opened element.',
+									},
 								);
 							} else {
 								// Loop through all unclosed elements on the stack

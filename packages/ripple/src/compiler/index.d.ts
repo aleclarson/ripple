@@ -78,6 +78,14 @@ export interface VolarMappingsResult {
 	errors: RippleCompileError[];
 }
 
+export interface RippleCompileLabel {
+	kind: 'primary' | 'secondary';
+	message?: string;
+	pos?: number;
+	end?: number;
+	loc: AST.SourceLocation;
+}
+
 export interface RippleCompileError extends Error {
 	pos: number | undefined;
 	raisedAt: number | undefined;
@@ -85,6 +93,15 @@ export interface RippleCompileError extends Error {
 	loc: AST.SourceLocation | undefined;
 	fileName: string | null;
 	type: 'fatal' | 'usage';
+	severity?: 'error' | 'warning';
+	code?: string;
+	help?: string;
+	notes?: string[];
+	labels?: RippleCompileLabel[];
+	frame?: string;
+	ansiFrame?: string;
+	formattedMessage?: string;
+	ansiFormattedMessage?: string;
 }
 
 /**
@@ -123,3 +140,9 @@ export function compile_to_volar_mappings(
 	filename: string,
 	options?: VolarCompileOptions,
 ): VolarMappingsResult;
+
+export function format_compile_error(
+	error: RippleCompileError,
+	source: string,
+	options?: { color?: boolean },
+): string;

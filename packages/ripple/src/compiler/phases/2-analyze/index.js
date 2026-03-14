@@ -33,6 +33,7 @@ import { extract_paths } from '../../../utils/ast.js';
 import is_reference from 'is-reference';
 import { prune_css } from './prune.js';
 import { analyze_css } from './css-analyze.js';
+import { DIAGNOSTIC_CODES } from '../../diagnostic-codes.js';
 import { error } from '../../errors.js';
 import { is_event_attribute } from '../../../utils/events.js';
 import { validate_nesting } from './validation.js';
@@ -132,8 +133,9 @@ function get_return_keyword_node(node) {
  * @param {AST.ReturnStatement} node
  * @param {AnalysisContext} context
  * @param {string} message
+ * @param {import('../../errors.js').DiagnosticOptions} [diagnostic_options]
  */
-function error_return_keyword(node, context, message) {
+function error_return_keyword(node, context, message, diagnostic_options) {
 	const return_keyword_node = get_return_keyword_node(node);
 
 	error(
@@ -142,6 +144,7 @@ function error_return_keyword(node, context, message) {
 		return_keyword_node,
 		context.state.loose ? context.state.analysis.errors : undefined,
 		context.state.analysis.comments,
+		diagnostic_options,
 	);
 }
 
@@ -242,6 +245,12 @@ const visitors = {
 				'`#ripple.server` block can only be declared at the module level.',
 				context.state.analysis.module.filename,
 				node,
+				undefined,
+				undefined,
+				{
+					code: DIAGNOSTIC_CODES.SERVER_BLOCK_MODULE_ONLY,
+					help: 'Move the `#ripple.server` block to module scope, outside any component or function body.',
+				},
 			);
 		}
 		node.metadata = {
@@ -283,6 +292,10 @@ const visitors = {
 					node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.SERVER_BLOCK_CLIENT_REFERENCE,
+						help: 'Pass the value into the server block through an exported server function, or redeclare the data inside the server block itself.',
+					},
 				);
 			}
 		}
@@ -317,6 +330,10 @@ const visitors = {
 					node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.RIPPLE_NAMESPACE_READ_ONLY,
+						help: `Assign the result of ${source_name}() to your own variable instead of mutating the #ripple namespace.`,
+					},
 				);
 				return context.next();
 			}
@@ -338,6 +355,10 @@ const visitors = {
 				node,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.RIPPLE_NAMESPACE_CALL_REQUIRED,
+					help: `Call ${source_name} as a function instead of referencing it directly.`,
+				},
 			);
 			return context.next();
 		}
@@ -369,6 +390,10 @@ const visitors = {
 					node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.STYLE_COMPONENT_ONLY,
+						help: 'Use `#ripple.style` inside a component that has its own `<style>` block.',
+					},
 				);
 			} else {
 				component.metadata.styleIdentifierPresent = true;
@@ -395,6 +420,10 @@ const visitors = {
 					node.property,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.STYLE_STATIC_CLASS_ACCESS_ONLY,
+						help: 'Use `#ripple.style.className` or `#ripple.style["className"]` with a static string literal.',
+					},
 				);
 			}
 
@@ -424,6 +453,10 @@ const visitors = {
 					node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.RIPPLE_NAMESPACE_COMPUTED_ACCESS_FORBIDDEN,
+						help: `Use dot notation on ${ripple_source} instead of computed property access.`,
+					},
 				);
 				return context.next();
 			}
@@ -440,6 +473,10 @@ const visitors = {
 						node.property,
 						context.state.loose ? context.state.analysis.errors : undefined,
 						context.state.analysis.comments,
+						{
+							code: DIAGNOSTIC_CODES.RIPPLE_ARRAY_NAMESPACE_MEMBER_RESTRICTED,
+							help: 'Use one of the supported factory methods: `#ripple.array.from(...)`, `#ripple.array.of(...)`, or `#ripple.array.fromAsync(...)`.',
+						},
 					);
 					return context.next();
 				}
@@ -451,6 +488,10 @@ const visitors = {
 					node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.RIPPLE_NAMESPACE_MEMBER_ACCESS_FORBIDDEN,
+						help: `Call ${ripple_source}(...) instead of accessing members on it.`,
+					},
 				);
 				return context.next();
 			}
@@ -465,6 +506,10 @@ const visitors = {
 					node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.RIPPLE_NAMESPACE_MEMBER_CALL_REQUIRED,
+						help: `Call ${full_name}(...) instead of referencing it.`,
+					},
 				);
 				return context.next();
 			}
@@ -492,6 +537,10 @@ const visitors = {
 						node.property,
 						context.state.loose ? context.state.analysis.errors : undefined,
 						context.state.analysis.comments,
+						{
+							code: DIAGNOSTIC_CODES.TRACKED_INTERNAL_PROPERTY_ACCESS,
+							help: `Use get(${node.object.name}) or @${node.object.name} to read the tracked value instead of touching internal fields.`,
+						},
 					);
 				}
 			}
@@ -507,6 +556,10 @@ const visitors = {
 					node.object,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.TRACKED_DIRECT_OBJECT_ACCESS,
+						help: `Read the tracked value with @${node.object.name}${node.property.type === 'Identifier' ? `.${node.property.name}` : ''} instead of accessing the tracked object directly.`,
+					},
 				);
 			}
 		}
@@ -533,6 +586,10 @@ const visitors = {
 				node.callee,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.TRACK_OUTSIDE_REACTIVE_CONTEXT,
+					help: 'Move the track call into a component, function, or class created from a component.',
+				},
 			);
 		}
 
@@ -558,6 +615,10 @@ const visitors = {
 				node,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.RIPPLE_NAMESPACE_NEW_FORBIDDEN,
+					help: `Call ${callee.metadata.source_name}(...) instead of constructing it with new.`,
+				},
 			);
 		}
 
@@ -573,6 +634,10 @@ const visitors = {
 				node,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.RIPPLE_NAMESPACE_NEW_FORBIDDEN,
+					help: 'Call the specific `#ripple` helper directly instead of constructing it with new.',
+				},
 			);
 		}
 
@@ -590,6 +655,10 @@ const visitors = {
 					declarator.id,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.VAR_DECLARATION_IN_COMPONENT,
+						help: 'Use let or const in components so bindings behave predictably across reactive updates.',
+					},
 				);
 			}
 			const metadata = { tracking: false, await: false };
@@ -621,6 +690,10 @@ const visitors = {
 							path.node,
 							context.state.loose ? context.state.analysis.errors : undefined,
 							context.state.analysis.comments,
+							{
+								code: DIAGNOSTIC_CODES.TRACKED_PATTERN_VARIABLE_FORBIDDEN,
+								help: 'Declare the variable normally and use @ only when reading it, not in declaration patterns.',
+							},
 						);
 					}
 				}
@@ -648,6 +721,10 @@ const visitors = {
 				node,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.STYLE_PROPERTY_ACCESS_ONLY,
+					help: 'Access a specific class such as `#ripple.style.button`, not `#ripple.style` by itself.',
+				},
 			);
 		}
 		context.next();
@@ -664,6 +741,10 @@ const visitors = {
 				node,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.SERVER_IDENTIFIER_MEMBER_ACCESS_ONLY,
+					help: 'Access a specific server export such as `#ripple.server.load(...)` instead of referencing `#ripple.server` directly.',
+				},
 			);
 		}
 		context.next();
@@ -718,6 +799,10 @@ const visitors = {
 					props,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.PROPS_MUST_BE_DESTRUCTURED_OBJECT,
+						help: 'Use a destructured object parameter such as `component App({ value = 1 })` for component props.',
+					},
 				);
 			}
 		}
@@ -766,6 +851,10 @@ const visitors = {
 						property,
 						context.state.loose ? context.state.analysis.errors : undefined,
 						context.state.analysis.comments,
+						{
+							code: DIAGNOSTIC_CODES.STYLE_MISSING_STANDALONE_CLASS,
+							help: 'Reference a standalone selector such as `.foo`, not a descendant, compound, or combinator-only class.',
+						},
 					);
 				}
 			}
@@ -789,6 +878,12 @@ const visitors = {
 				'For loops are not supported in components. Use for...of instead.',
 				context.state.analysis.module.filename,
 				node,
+				undefined,
+				undefined,
+				{
+					code: DIAGNOSTIC_CODES.FOR_LOOP_IN_COMPONENT,
+					help: 'Use for...of for template rendering, or move the loop into a helper function or effect.',
+				},
 			);
 		}
 
@@ -823,6 +918,10 @@ const visitors = {
 					switch_case,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.SWITCH_CASE_REQUIRES_TEMPLATE,
+						help: 'Render a template or await expression in every switch case, or move the switch into an effect.',
+					},
 				);
 			}
 		}
@@ -897,6 +996,10 @@ const visitors = {
 				node.body,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.FOR_OF_REQUIRES_TEMPLATE,
+					help: 'Render a template or await expression inside the for...of body, or move the loop into an effect.',
+				},
 			);
 		}
 	},
@@ -920,6 +1023,10 @@ const visitors = {
 				/** @type {AST.Identifier} */ (declaration.id),
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.SERVER_BLOCK_EXPORTED_COMPONENT_UNSUPPORTED,
+					help: 'Export plain functions from server blocks for now; exported components are not supported yet.',
+				},
 			);
 			// TODO: the client and server rendering doesn't currently support components
 			// If we're going to support this, we need to account also for anonymous object declaration
@@ -949,6 +1056,10 @@ const visitors = {
 								decl.init,
 								context.state.loose ? context.state.analysis.errors : undefined,
 								context.state.analysis.comments,
+								{
+									code: DIAGNOSTIC_CODES.SERVER_BLOCK_EXPORTED_MEMBER_EXPRESSION_UNSUPPORTED,
+									help: 'Export a named function directly instead of exporting a member expression from a server block.',
+								},
 							);
 							continue;
 						}
@@ -961,6 +1072,10 @@ const visitors = {
 								path.node,
 								context.state.loose ? context.state.analysis.errors : undefined,
 								context.state.analysis.comments,
+								{
+									code: DIAGNOSTIC_CODES.SERVER_BLOCK_EXPORTED_PATTERN_UNSUPPORTED,
+									help: 'Export named functions directly instead of destructured object or array patterns from a server block.',
+								},
 							);
 						}
 					}
@@ -972,6 +1087,10 @@ const visitors = {
 					decl,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.SERVER_BLOCK_EXPORTED_DECLARATION_TYPE_UNSUPPORTED,
+						help: 'Only exported functions are currently supported as server block exports.',
+					},
 				);
 			}
 		} else if (node.specifiers) {
@@ -991,6 +1110,10 @@ const visitors = {
 					specifier,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.SERVER_BLOCK_EXPORTED_SPECIFIER_UNSUPPORTED,
+						help: 'Only exported functions are currently supported as server block exports.',
+					},
 				);
 			}
 		} else {
@@ -1000,6 +1123,10 @@ const visitors = {
 				node,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.SERVER_BLOCK_EXPORTED_DECLARATION_TYPE_UNSUPPORTED,
+					help: 'Only exported functions are currently supported as server block exports.',
+				},
 			);
 		}
 
@@ -1055,6 +1182,10 @@ const visitors = {
 				node.consequent,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.IF_THEN_REQUIRES_TEMPLATE,
+					help: 'Render something in the `then` branch, or move the conditional logic into an effect.',
+				},
 			);
 		}
 
@@ -1072,6 +1203,10 @@ const visitors = {
 					node.alternate,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.IF_ELSE_REQUIRES_TEMPLATE,
+						help: 'Render something in the `else` branch, or move the conditional logic into an effect.',
+					},
 				);
 			}
 
@@ -1093,6 +1228,10 @@ const visitors = {
 					node,
 					context,
 					'Return statements are not allowed at the top level of a module.',
+					{
+						code: DIAGNOSTIC_CODES.RETURN_AT_MODULE_TOP_LEVEL,
+						help: 'Move the returned value into a function, or remove the top-level return statement.',
+					},
 				);
 			}
 
@@ -1104,6 +1243,10 @@ const visitors = {
 				node,
 				context,
 				'Return statements inside components cannot have a return value.',
+				{
+					code: DIAGNOSTIC_CODES.RETURN_VALUE_IN_COMPONENT,
+					help: 'Return without a value inside components, and render UI through template statements instead.',
+				},
 			);
 		}
 
@@ -1160,6 +1303,10 @@ const visitors = {
 					node.block,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.TRY_MAIN_REQUIRES_TEMPLATE,
+						help: 'Render a template in the main try body, or move the try logic into an effect.',
+					},
 				);
 			}
 
@@ -1177,6 +1324,10 @@ const visitors = {
 					node.pending,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.TRY_PENDING_REQUIRES_TEMPLATE,
+						help: 'Render a pending fallback template when using a try/pending block.',
+					},
 				);
 			}
 		}
@@ -1198,6 +1349,12 @@ const visitors = {
 				'For...in loops are not supported in components. Use for...of instead.',
 				context.state.analysis.module.filename,
 				node,
+				undefined,
+				undefined,
+				{
+					code: DIAGNOSTIC_CODES.FOR_IN_LOOP_IN_COMPONENT,
+					help: 'Use for...of for template rendering, or move the loop into a helper function or effect.',
+				},
 			);
 		}
 
@@ -1210,6 +1367,12 @@ const visitors = {
 				'While loops are not supported in components. Move the while loop into a function.',
 				context.state.analysis.module.filename,
 				node,
+				undefined,
+				undefined,
+				{
+					code: DIAGNOSTIC_CODES.WHILE_LOOP_IN_COMPONENT,
+					help: 'Move the while loop into a helper function or effect instead of using it directly in a component body.',
+				},
 			);
 		}
 
@@ -1222,6 +1385,12 @@ const visitors = {
 				'Do...while loops are not supported in components. Move the do...while loop into a function.',
 				context.state.analysis.module.filename,
 				node,
+				undefined,
+				undefined,
+				{
+					code: DIAGNOSTIC_CODES.DO_WHILE_LOOP_IN_COMPONENT,
+					help: 'Move the do...while loop into a helper function or effect instead of using it directly in a component body.',
+				},
 			);
 		}
 
@@ -1239,6 +1408,12 @@ const visitors = {
 			'Elements cannot be used as generic expressions, only as statements within a component',
 			context.state.analysis.module.filename,
 			node,
+			undefined,
+			undefined,
+			{
+				code: DIAGNOSTIC_CODES.ELEMENT_AS_GENERIC_EXPRESSION,
+				help: 'Use elements as statements inside a component body, not as general-purpose expression values.',
+			},
 		);
 	},
 
@@ -1253,6 +1428,12 @@ const visitors = {
 				'Elements cannot be used outside of components',
 				context.state.analysis.module.filename,
 				node,
+				undefined,
+				undefined,
+				{
+					code: DIAGNOSTIC_CODES.ELEMENT_OUTSIDE_COMPONENT,
+					help: 'Move the element into a component body.',
+				},
 			);
 		}
 
@@ -1298,11 +1479,31 @@ const visitors = {
 				// head validation
 				if (node.attributes.length > 0) {
 					// TODO: could transform attributes as something, e.g. Text Node, and avoid a fatal error
-					error('<head> cannot have any attributes', state.analysis.module.filename, node);
+					error(
+						'<head> cannot have any attributes',
+						state.analysis.module.filename,
+						node,
+						undefined,
+						undefined,
+						{
+							code: DIAGNOSTIC_CODES.HEAD_CANNOT_HAVE_ATTRIBUTES,
+							help: 'Remove attributes from <head>.',
+						},
+					);
 				}
 				if (node.children.length === 0) {
 					// TODO: could transform children as something, e.g. Text Node, and avoid a fatal error
-					error('<head> must have children', state.analysis.module.filename, node);
+					error(
+						'<head> must have children',
+						state.analysis.module.filename,
+						node,
+						undefined,
+						undefined,
+						{
+							code: DIAGNOSTIC_CODES.HEAD_MUST_HAVE_CHILDREN,
+							help: 'Add at least one valid head child such as <title>, <meta>, <link>, or <script>.',
+						},
+					);
 				}
 
 				for (const child of node.children) {
@@ -1318,9 +1519,15 @@ const visitors = {
 					if (children.length !== 1 || children[0].type !== 'Text') {
 						// TODO: could transform children as something, e.g. Text Node, and avoid a fatal error
 						error(
-							'<title> must have only contain text nodes',
+							'<title> must contain only plain text.',
 							state.analysis.module.filename,
 							node,
+							undefined,
+							undefined,
+							{
+								code: DIAGNOSTIC_CODES.TITLE_TEXT_ONLY,
+								help: 'Keep <title> content to plain text only.',
+							},
 						);
 					}
 				}
@@ -1332,6 +1539,12 @@ const visitors = {
 						`<${/** @type {AST.Identifier} */ (node.id).name}> cannot be used in <head>`,
 						state.analysis.module.filename,
 						node,
+						undefined,
+						undefined,
+						{
+							code: DIAGNOSTIC_CODES.INVALID_HEAD_ELEMENT,
+							help: 'Use only head-safe elements inside <head>, such as <title>, <meta>, <link>, or <script>.',
+						},
 					);
 				}
 			} else {
@@ -1342,6 +1555,11 @@ const visitors = {
 						state.analysis.module.filename,
 						node.openingElement,
 						state.loose ? state.analysis.errors : undefined,
+						undefined,
+						{
+							code: DIAGNOSTIC_CODES.SCRIPT_OUTSIDE_HEAD,
+							help: 'Move <script> into <head>, or rewrite it without using a <script> tag.',
+						},
 					);
 
 					if (node.closingElement) {
@@ -1350,6 +1568,11 @@ const visitors = {
 							state.analysis.module.filename,
 							node.closingElement,
 							state.loose ? state.analysis.errors : undefined,
+							undefined,
+							{
+								code: DIAGNOSTIC_CODES.SCRIPT_OUTSIDE_HEAD,
+								help: 'Move <script> into <head>, or rewrite it without using a <script> tag.',
+							},
 						);
 					}
 				}
@@ -1387,10 +1610,30 @@ const visitors = {
 							},
 							context.state.loose ? context.state.analysis.errors : undefined,
 							context.state.analysis.comments,
+							{
+								code: DIAGNOSTIC_CODES.EMPTY_ATTRIBUTE_EXPRESSION,
+								help: 'Provide a non-empty expression inside the attribute braces, or remove the attribute value.',
+							},
 						);
 					}
 					if (attr.name.type === 'Identifier') {
 						attribute_names.add(attr.name);
+
+						if (attr.name.name === 'children') {
+							error(
+								'Cannot have a `children` prop on an element',
+								state.analysis.module.filename,
+								attr,
+								context.state.loose ? context.state.analysis.errors : undefined,
+								context.state.analysis.comments,
+								{
+									code: DIAGNOSTIC_CODES.CHILDREN_PROP_ON_ELEMENT_FORBIDDEN,
+									help: 'Pass nested content to elements directly instead of setting a `children` prop.',
+								},
+							);
+
+							continue;
+						}
 
 						if (attr.name.name === 'key') {
 							error(
@@ -1399,6 +1642,10 @@ const visitors = {
 								attr,
 								context.state.loose ? context.state.analysis.errors : undefined,
 								context.state.analysis.comments,
+								{
+									code: DIAGNOSTIC_CODES.DOM_KEY_ATTRIBUTE_FORBIDDEN,
+									help: 'Use the `for (...; key expr)` clause for keyed loops instead of a DOM `key` attribute.',
+								},
 							);
 						}
 
@@ -1413,6 +1660,10 @@ const visitors = {
 								attr.value.object,
 								context.state.loose ? context.state.analysis.errors : undefined,
 								context.state.analysis.comments,
+								{
+									code: DIAGNOSTIC_CODES.STYLE_DIRECT_DOM_USAGE,
+									help: 'Use a normal class value on the DOM element, or pass `#ripple.style.foo` through a component prop.',
+								},
 							);
 						}
 
@@ -1441,6 +1692,10 @@ const visitors = {
 					node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.VOID_ELEMENT_CHILDREN_FORBIDDEN,
+						help: 'Remove the children or change to a non-void element.',
+					},
 				);
 			}
 		} else {
@@ -1483,22 +1738,10 @@ const visitors = {
 						item,
 						context.state.loose ? context.state.analysis.errors : undefined,
 						context.state.analysis.comments,
-					);
-				}
-			}
-		}
-
-		// Validation
-		for (const attribute of attribute_names) {
-			const name = attribute.name;
-			if (name === 'children') {
-				if (is_dom_element) {
-					error(
-						'Cannot have a `children` prop on an element',
-						state.analysis.module.filename,
-						attribute,
-						context.state.loose ? context.state.analysis.errors : undefined,
-						context.state.analysis.comments,
+						{
+							code: DIAGNOSTIC_CODES.IMPLICIT_AND_EXPLICIT_CHILDREN_CONFLICT,
+							help: 'Use either nested content or an explicit `component children() {}` block, but not both at once.',
+						},
 					);
 				}
 			}
@@ -1525,6 +1768,10 @@ const visitors = {
 				node.expression,
 				context.state.loose ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
+				{
+					code: DIAGNOSTIC_CODES.CHILDREN_INTERPOLATION_FORBIDDEN,
+					help: 'Render children with `<children />` instead of text interpolation.',
+				},
 			);
 		}
 
@@ -1560,6 +1807,10 @@ const visitors = {
 					adjusted_node,
 					context.state.loose ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
+					{
+						code: DIAGNOSTIC_CODES.AWAIT_IN_CLIENT_CONTROL_FLOW,
+						help: 'Use await at the component top level or inside a try/pending block, not in client-side control-flow statements.',
+					},
 				);
 			}
 		}
