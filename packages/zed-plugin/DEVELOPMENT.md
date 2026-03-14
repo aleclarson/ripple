@@ -122,7 +122,8 @@ npm install --save-dev @ripple-ts/language-server
 
 ### Extension won't build
 
-1. Ensure there isn't already a directory named `ripple` in `packages/zed-plugin/grammars/`. If there is, delete it.
+1. Ensure there isn't already a directory named `ripple` in
+   `packages/zed-plugin/grammars/`. If there is, delete it.
 2. Ensure Rust toolchain is installed: `rustc --version`
 3. Ensure wasm32-wasip1 target is installed: `rustup target list --installed`
 4. Check Cargo.toml has correct `zed_extension_api` version
