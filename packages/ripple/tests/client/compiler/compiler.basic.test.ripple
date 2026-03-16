@@ -891,9 +891,7 @@ component App() {
 			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
 				'7 |   </style>',
 			);
-			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
-				'8 | }',
-			);
+			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain('8 | }');
 			expect((error as Error & { formattedMessage?: string }).formattedMessage).toContain(
 				'help: Add the missing `}` to close the current CSS block.',
 			);
