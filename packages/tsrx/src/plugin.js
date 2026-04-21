@@ -13,7 +13,7 @@ import {
 	BINDING_TYPES,
 	DestructuringErrors,
 } from './parse/index.js';
-import { regex_newline_characters } from './utils/patterns.js';
+import { regex_newline_characters, regex_whitespace } from './utils/patterns.js';
 import { error } from './errors.js';
 
 /**
@@ -330,6 +330,90 @@ export function TSRXPlugin(config) {
 					this.context.push(b_stat);
 				}
 				return super.nextToken();
+			}
+
+			/**
+			 * When we're inside an Element (or tsx) body and the current token is `<`,
+			 * check whether the lookahead is `</ident>` (an element closing tag). Such
+			 * a sequence can never be a valid JS continuation (`</ident>` cannot form a
+			 * closed regex without a subsequent `/`, and `<` as less-than requires a
+			 * parseable RHS). Detecting this lets us terminate a preceding JS
+			 * expression/statement here, so users don't need a trailing `;` before the
+			 * closing tag (e.g. `<ul>var a = "x"</ul>`).
+			 * @returns {boolean}
+			 */
+			#isElementClosingTagAhead() {
+				if (this.type !== tt.relational || this.value !== '<') return false;
+
+				const parent = this.#path.at(-1);
+				if (
+					!parent ||
+					(parent.type !== 'Element' && parent.type !== 'Tsx' && parent.type !== 'TsxCompat')
+				) {
+					return false;
+				}
+
+				const input = this.input;
+				const len = input.length;
+				let i = this.end;
+
+				while (i < len && regex_whitespace.test(input[i])) i++;
+				if (i >= len || input.charCodeAt(i) !== 47 /* '/' */) return false;
+				i++;
+				while (i < len && regex_whitespace.test(input[i])) i++;
+
+				if (i >= len) return false;
+				const first = input.charCodeAt(i);
+				const isIdentStart =
+					(first >= 65 && first <= 90) || // A-Z
+					(first >= 97 && first <= 122) || // a-z
+					first === 95 || // _
+					first === 36; // $
+				if (!isIdentStart) return false;
+				i++;
+
+				while (i < len) {
+					const c = input.charCodeAt(i);
+					const isIdentPart =
+						(c >= 65 && c <= 90) ||
+						(c >= 97 && c <= 122) ||
+						(c >= 48 && c <= 57) ||
+						c === 95 ||
+						c === 36 ||
+						c === 46 /* . */ ||
+						c === 58 /* : */ ||
+						c === 45 /* - */;
+					if (!isIdentPart) break;
+					i++;
+				}
+
+				while (i < len && regex_whitespace.test(input[i])) i++;
+				return i < len && input.charCodeAt(i) === 62 /* '>' */;
+			}
+
+			/**
+			 * Terminate the binary-expression loop when `<` is actually the start of
+			 * an element closing tag. Without this, acorn treats `<` as less-than and
+			 * tries to tokenize `/ident>` as a regex, which fails with
+			 * "Unterminated regular expression".
+			 * @type {Parse.Parser['parseExprOp']}
+			 */
+			parseExprOp(left, leftStartPos, leftStartLoc, minPrec, forInit) {
+				if (this.#isElementClosingTagAhead()) {
+					return left;
+				}
+				return super.parseExprOp(left, leftStartPos, leftStartLoc, minPrec, forInit);
+			}
+
+			/**
+			 * Allow ASI when the next token is an element closing tag (`</ident>`).
+			 * This lets statements inside element children omit the trailing `;`
+			 * before the closing tag.
+			 * @type {Parse.Parser['canInsertSemicolon']}
+			 */
+			canInsertSemicolon() {
+				if (super.canInsertSemicolon()) return true;
+				return this.#isElementClosingTagAhead();
 			}
 
 			/**
@@ -2110,6 +2194,23 @@ export function TSRXPlugin(config) {
 					skipWhitespace(this);
 					const node = this.parseStatement(null);
 					body.push(node);
+
+					// After ASI terminates a statement just before `</ident>`, the
+					// lookahead `<` was tokenized in JS mode as `tt.relational`. Rewind
+					// and re-tokenize in JSX mode so the closing-tag branch can handle it.
+					if (
+						this.type === tt.relational &&
+						this.value === '<' &&
+						this.#isElementClosingTagAhead()
+					) {
+						this.pos = this.start;
+						this.exprAllowed = true;
+						// Ensure we read the `<` via jsx_readToken
+						if (this.curContext() !== tstc.tc_expr) {
+							this.context.push(tstc.tc_expr);
+						}
+						this.next();
+					}
 
 					// Ensure we're not in JSX context before recursing
 					// This is important when elements are parsed at statement level

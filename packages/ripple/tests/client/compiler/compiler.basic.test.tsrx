@@ -705,4 +705,35 @@ export component App() {
 
 		expect(result).toContain('_$_.spread_props(');
 	});
+
+	it('allows omitting the trailing semicolon before an element closing tag', () => {
+		// `</ident>` can never be a valid JS continuation (the `/ident>` shape can
+		// only be a closed regex with a subsequent `/`, which isn't present), so
+		// the parser treats it as a statement terminator inside element children.
+		const sources = [
+			'component A() { <ul>var a = "123"</ul> }',
+			'component A() { <ul>foo()</ul> }',
+			'component A() { <ul>var x = 1 + 2</ul> }',
+			'component A() { <ul>var a = 1; var b = 2</ul> }',
+			'component A() { <div><span>let a = 1</span></div> }',
+		];
+
+		for (const source of sources) {
+			expect(() => parse(source)).not.toThrow();
+		}
+	});
+
+	it('still preserves valid JS that uses `<` as less-than before a closing tag', () => {
+		// Regression: the ASI-before-closing-tag fix must not misfire on
+		// less-than comparisons or regex literals inside element children.
+		const sources = [
+			'component A() { <ul>{1 < 2}</ul> }',
+			'component A() { let r = /<span>/g; <div>{String(r)}</div> }',
+			'component A() { <div>let x = /abc/;</div> }',
+		];
+
+		for (const source of sources) {
+			expect(() => parse(source)).not.toThrow();
+		}
+	});
 });
