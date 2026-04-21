@@ -382,7 +382,7 @@ export function TSRXPlugin(config) {
 						c === 36 ||
 						c === 46 /* . */ ||
 						c === 58 /* : */ ||
-						c === 45 /* - */;
+						c === 45; /* - */
 					if (!isIdentPart) break;
 					i++;
 				}
