@@ -1,0 +1,148 @@
+import { describe, expect, it } from 'vitest';
+import { runSharedSourceMappingTests } from '@tsrx/core/test-harness/source-mappings';
+import { compile, compile_to_volar_mappings } from '../src/index.js';
+
+runSharedSourceMappingTests({
+	compile,
+	compile_to_volar_mappings,
+	name: 'vue',
+	rejectsComponentAwait: true,
+});
+
+describe('@tsrx/vue basic', () => {
+	it('wraps named component exports in defineVaporComponent', () => {
+		const { code } = compile(
+			`export component App() {
+				<div>{'Hello'}</div>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toMatchSnapshot();
+	});
+
+	it('wraps default component exports in defineVaporComponent', () => {
+		const { code } = compile(
+			`export default component App() {
+				<div>{'Hello'}</div>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toMatchSnapshot();
+	});
+
+	it('merges defineVaporComponent into existing vue imports', () => {
+		const { code } = compile(
+			`import { ref } from 'vue';
+
+			component App() {
+				const count = ref(0);
+				<button>{count.value}</button>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain("import { ref, defineVaporComponent } from 'vue';");
+		expect(code.match(/defineVaporComponent/g)).toHaveLength(2);
+	});
+
+	it('emits scoped CSS and applies the scope hash to host elements', () => {
+		const { code, css } = compile(
+			`component App() {
+				<div class="card">{'Hi'}</div>
+
+				<style>
+					.card {
+						color: red;
+					}
+				</style>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(css).not.toBeNull();
+		expect(code).toContain(`class="card ${css?.hash}"`);
+		expect(css?.code).toContain(`.card.${css?.hash}`);
+		expect(css?.code).toContain('color: red;');
+	});
+
+	it('rejects if statements in component bodies', () => {
+		expect(() =>
+			compile(
+				`component App({ visible }) {
+					if (visible) {
+						<div>{'Visible'}</div>
+					}
+				}`,
+				'App.tsrx',
+			),
+		).toThrow(/`if` statements are not yet supported in Vue TSRX\./);
+	});
+
+	it('rejects for...of statements in component bodies', () => {
+		expect(() =>
+			compile(
+				`component App({ items }) {
+					for (const item of items) {
+						<div>{item}</div>
+					}
+				}`,
+				'App.tsrx',
+			),
+		).toThrow(/`for\.\.\.of` statements are not yet supported in Vue TSRX\./);
+	});
+
+	it('rejects switch statements in component bodies', () => {
+		expect(() =>
+			compile(
+				`component App({ value }) {
+					switch (value) {
+						case 'a':
+							<div>{'A'}</div>
+					}
+				}`,
+				'App.tsrx',
+			),
+		).toThrow(/`switch` statements are not yet supported in Vue TSRX\./);
+	});
+
+	it('rejects try statements in component bodies', () => {
+		expect(() =>
+			compile(
+				`component App() {
+					try {
+						<div>{'Async content'}</div>
+					} catch (error) {
+						<div>{error.message}</div>
+					}
+				}`,
+				'App.tsrx',
+			),
+		).toThrow(/`try` statements are not yet supported in Vue TSRX\./);
+	});
+
+	it('rejects await in component bodies', () => {
+		expect(() =>
+			compile(
+				`component App() {
+					const data = await fetchData();
+					<div>{data}</div>
+				}`,
+				'App.tsrx',
+			),
+		).toThrow(/`await` is not yet supported in Vue TSRX components\./);
+	});
+
+	it('allows await in nested async functions inside component bodies', () => {
+		expect(() =>
+			compile(
+				`component App() {
+					const load = async () => await fetchData();
+					<button onClick={load}>{'Load'}</button>
+				}`,
+				'App.tsrx',
+			),
+		).not.toThrow();
+	});
+});

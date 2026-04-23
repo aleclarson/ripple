@@ -66,6 +66,15 @@ export default defineConfig({
 			},
 			{
 				test: {
+					name: 'tsrx-vue',
+					include: ['packages/tsrx-vue/tests/**/*.test.js'],
+					environment: 'node',
+					globals: true,
+				},
+				plugins: [],
+			},
+			{
+				test: {
 					name: 'vite-plugin-react',
 					include: ['packages/vite-plugin-react/tests/**/*.test.js'],
 					environment: 'node',
