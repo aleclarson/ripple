@@ -320,12 +320,18 @@ function has_use_server_directive(program) {
 }
 
 /**
+ * Lower a TSRX `Component` node into the shared function-declaration form used
+ * by the default JSX targets. Platform hooks can reuse this helper and wrap the
+ * resulting function in another declaration shape without reimplementing
+ * component body lowering, lazy destructuring, helper generation, or top-level
+ * await handling.
+ *
  * @param {any} component
  * @param {TransformContext} transform_context
  * @param {{ base_name: string, next_id: number, helpers: AST.FunctionDeclaration[], statics: any[] }} [walk_helper_state]
  * @returns {AST.FunctionDeclaration}
  */
-function component_to_function_declaration(component, transform_context, walk_helper_state) {
+export function component_to_function_declaration(component, transform_context, walk_helper_state) {
 	const helper_state = walk_helper_state || create_helper_state(component.id?.name || 'Component');
 	const params = component.params || [];
 	const body = /** @type {any[]} */ (component.body || []);
@@ -1063,32 +1069,45 @@ function hoist_static_render_nodes(render_nodes, transform_context) {
  */
 function expand_component_helpers(program) {
 	program.body = program.body.flatMap((statement) => {
-		if (statement.type === 'FunctionDeclaration') {
-			const meta = /** @type {any} */ (statement.metadata);
-			const statics = meta?.generated_statics || [];
-			const helpers = meta?.generated_helpers || [];
-			if (statics.length || helpers.length) {
-				return [...statics, ...helpers, statement];
-			}
-		}
-
-		if (
-			(statement.type === 'ExportNamedDeclaration' ||
-				statement.type === 'ExportDefaultDeclaration') &&
-			statement.declaration?.type === 'FunctionDeclaration'
-		) {
-			const meta = /** @type {any} */ (statement.declaration.metadata);
-			const statics = meta?.generated_statics || [];
-			const helpers = meta?.generated_helpers || [];
-			if (statics.length || helpers.length) {
-				return [...statics, ...helpers, statement];
-			}
+		const meta = get_generated_component_metadata(statement);
+		const statics = meta?.generated_statics || [];
+		const helpers = meta?.generated_helpers || [];
+		if (statics.length || helpers.length) {
+			return [...statics, ...helpers, statement];
 		}
 
 		return [statement];
 	});
 
 	return program;
+}
+
+/**
+ * Component hooks may replace a `Component` node with a function declaration,
+ * variable declaration, or export-safe expression. Generated helper/statics
+ * metadata is carried on whichever replacement node the hook returns, so
+ * helper expansion must read metadata from that broader set.
+ *
+ * @param {any} node
+ * @returns {{ generated_helpers?: any[], generated_statics?: any[] } | null}
+ */
+function get_generated_component_metadata(node) {
+	if (!node || typeof node !== 'object') {
+		return null;
+	}
+
+	if (node.metadata?.generated_helpers || node.metadata?.generated_statics) {
+		return node.metadata;
+	}
+
+	if (
+		(node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') &&
+		node.declaration?.metadata
+	) {
+		return node.declaration.metadata;
+	}
+
+	return null;
 }
 
 /**

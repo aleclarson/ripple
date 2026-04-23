@@ -56,10 +56,15 @@ export interface JsxPlatformHooks {
 		tryStatement?: (node: any, ctx: any) => any;
 	};
 	/**
-	 * Lower a `component` declaration to a FunctionDeclaration. React / Preact
-	 * use a default that extracts hooks, hoists statics, and handles async
-	 * bodies. Solid replaces this with a setup-once implementation that
-	 * hoists post-early-return JSX into a reactive `<Show>`.
+	 * Lower a `component` declaration to the replacement node for its current
+	 * position. React / Preact use the default helper and return a
+	 * `FunctionDeclaration`. Other targets may return a variable declaration or
+	 * an expression that wraps the shared lowered function body (for example,
+	 * `defineVaporComponent(...)`).
+	 *
+	 * The default lowering is exported as `componentToFunctionDeclaration()` so
+	 * platform hooks can build on it instead of reimplementing component body
+	 * handling.
 	 */
 	componentToFunction?: (component: any, ctx: any, helperState?: any) => any;
 	/**
@@ -191,3 +196,9 @@ export function createJsxTransform(
 	filename?: string,
 	options?: JsxTransformOptions,
 ) => JsxTransformResult;
+
+export function componentToFunctionDeclaration(
+	component: any,
+	ctx: any,
+	helperState?: any,
+): AST.FunctionDeclaration;
