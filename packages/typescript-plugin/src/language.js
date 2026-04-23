@@ -48,6 +48,12 @@ export const COMPILER_CANDIDATES = [
 		['.tsrx'],
 		['@tsrx/solid', '@tsrx/vite-plugin-solid'],
 	],
+	[
+		'@tsrx/vue',
+		['node_modules', '@tsrx', 'vue'],
+		['.tsrx'],
+		['@tsrx/vue', 'vue', 'vue-jsx-vapor'],
+	],
 ];
 
 /**
