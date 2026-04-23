@@ -67,44 +67,114 @@ describe('@tsrx/vue basic', () => {
 		expect(css?.code).toContain('color: red;');
 	});
 
-	it('rejects if statements in component bodies', () => {
-		expect(() =>
-			compile(
-				`component App({ visible }) {
-					if (visible) {
-						<div>{'Visible'}</div>
-					}
-				}`,
-				'App.tsrx',
-			),
-		).toThrow(/`if` statements are not yet supported in Vue TSRX\./);
+	it('compiles a simple if block in component bodies', () => {
+		const { code } = compile(
+			`component App({ visible }) {
+				if (visible) {
+					<div>{'Visible'}</div>
+				}
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('if (visible) {');
+		expect(code).toContain("const App__static1 = <div>{'Visible'}</div>;");
+		expect(code).toContain('return App__static1;');
+		expect(code).toContain('return null;');
+		expect(code).not.toContain('not yet supported in Vue TSRX');
 	});
 
-	it('rejects for...of statements in component bodies', () => {
-		expect(() =>
-			compile(
-				`component App({ items }) {
-					for (const item of items) {
-						<div>{item}</div>
-					}
-				}`,
-				'App.tsrx',
-			),
-		).toThrow(/`for\.\.\.of` statements are not yet supported in Vue TSRX\./);
+	it('compiles if/else chains in component bodies', () => {
+		const { code } = compile(
+			`component App({ visible }) {
+				if (visible) {
+					<div>{'Visible'}</div>
+				} else {
+					<div>{'Hidden'}</div>
+				}
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('if (visible) {');
+		expect(code).toContain("<div>{'Visible'}</div>");
+		expect(code).toContain('else {');
+		expect(code).toContain("<div>{'Hidden'}</div>");
+		expect(code).toMatch(/return App__static\d+;/);
 	});
 
-	it('rejects switch statements in component bodies', () => {
-		expect(() =>
-			compile(
-				`component App({ value }) {
-					switch (value) {
-						case 'a':
-							<div>{'A'}</div>
+	it('compiles for...of statements in component bodies', () => {
+		const { code } = compile(
+			`component App({ items }) {
+				for (const item of items) {
+					<div>{item}</div>
+				}
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('.map(');
+		expect(code).toContain('item) =>');
+		expect(code).toContain('return <div>{item}</div>;');
+		expect(code).not.toContain('not yet supported in Vue TSRX');
+	});
+
+	it('compiles keyed for...of statements in component bodies', () => {
+		const { code } = compile(
+			`component App({ items }: { items: { id: string, text: string }[] }) {
+				for (const item of items; key item.id) {
+					<div>{item.text}</div>
+				}
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('.map(');
+		expect(code).toContain('key={item.id}');
+		expect(code).toContain('item.text');
+	});
+
+	it('compiles switch statements in component bodies', () => {
+		const { code } = compile(
+			`component App({ value }) {
+				switch (value) {
+					case 'a':
+						<div>{'A'}</div>
+						break;
+					default:
+						<div>{'Fallback'}</div>
 					}
 				}`,
 				'App.tsrx',
-			),
-		).toThrow(/`switch` statements are not yet supported in Vue TSRX\./);
+		);
+
+		expect(code).toContain('switch (value) {');
+		expect(code).toContain("<div>{'A'}</div>");
+		expect(code).toContain("<div>{'Fallback'}</div>");
+		expect(code).toContain("return <div>{'A'}</div>;");
+		expect(code).toContain("return <div>{'Fallback'}</div>;");
+		expect(code).not.toContain('not yet supported in Vue TSRX');
+	});
+
+	it('compiles switch statements with inline case statements before JSX', () => {
+		const { code } = compile(
+			`component App({ value }) {
+				switch (value) {
+					case 'a': {
+						const label = 'A';
+						<div>{label}</div>
+						break;
+					}
+					default:
+						<div>{'Fallback'}</div>
+					}
+				}`,
+				'App.tsrx',
+		);
+
+		expect(code).toContain('switch (value) {');
+		expect(code).toContain("const label = 'A';");
+		expect(code).toContain('return <div>{label}</div>;');
 	});
 
 	it('rejects try statements in component bodies', () => {

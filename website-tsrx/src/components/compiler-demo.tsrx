@@ -12,9 +12,9 @@ const EMPTY_DEMO_SOURCE = '';
 const TARGET_OPTIONS = [
 	{ value: 'react', label: 'React' },
 	{ value: 'preact', label: 'Preact' },
-	{ value: 'vue', label: 'Vue' },
 	{ value: 'ripple', label: 'Ripple' },
 	{ value: 'solid', label: 'Solid' },
+	{ value: 'vue', label: 'Vue' },
 ];
 const TARGET_LABELS: Record<string, string> = {
 	react: 'React output',

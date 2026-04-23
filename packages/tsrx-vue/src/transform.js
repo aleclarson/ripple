@@ -1,6 +1,7 @@
 /** @import { JsxPlatform } from '@tsrx/core/types' */
 
 import {
+	builders,
 	clone_identifier,
 	componentToFunctionDeclaration,
 	createJsxTransform,
@@ -42,15 +43,6 @@ const vue_platform = {
 			);
 		},
 		controlFlow: {
-			ifStatement(node) {
-				throw unsupported_vue_feature(node, '`if` statements');
-			},
-			forOf(node) {
-				throw unsupported_vue_feature(node, '`for...of` statements');
-			},
-			switchStatement(node) {
-				throw unsupported_vue_feature(node, '`switch` statements');
-			},
 			tryStatement(node) {
 				throw unsupported_vue_feature(node, '`try` statements');
 			},
@@ -76,6 +68,8 @@ export const transform = createJsxTransform(vue_platform);
 function component_to_vapor_component_declaration(component, transform_context, helper_state) {
 	const fn = componentToFunctionDeclaration(component, transform_context, helper_state);
 	const meta = fn.metadata || { path: [] };
+	const generated_helpers = helper_state?.helpers || [];
+	const generated_statics = helper_state?.statics || [];
 	const call = setLocation(
 		/** @type {any} */ ({
 			type: 'CallExpression',
@@ -88,8 +82,8 @@ function component_to_vapor_component_declaration(component, transform_context, 
 			optional: false,
 			metadata: {
 				path: [],
-				generated_helpers: meta.generated_helpers || [],
-				generated_statics: meta.generated_statics || [],
+				generated_helpers,
+				generated_statics,
 			},
 		}),
 		component,
@@ -113,8 +107,8 @@ function component_to_vapor_component_declaration(component, transform_context, 
 			],
 			metadata: {
 				path: [],
-				generated_helpers: meta.generated_helpers || [],
-				generated_statics: meta.generated_statics || [],
+				generated_helpers,
+				generated_statics,
 			},
 		}),
 		component,
@@ -170,16 +164,9 @@ function inject_vue_imports(program, transform_context) {
 		if (!has_define_vapor_component) {
 			statement.specifiers.push({
 				type: 'ImportSpecifier',
-				imported: {
-					type: 'Identifier',
-					name: 'defineVaporComponent',
-					metadata: { path: [] },
-				},
-				local: {
-					type: 'Identifier',
-					name: 'defineVaporComponent',
-					metadata: { path: [] },
-				},
+				imported: builders.id('defineVaporComponent'),
+				local: builders.id('defineVaporComponent'),
+				importKind: 'value',
 				metadata: { path: [] },
 			});
 		}
@@ -189,27 +176,18 @@ function inject_vue_imports(program, transform_context) {
 
 	program.body.unshift({
 		type: 'ImportDeclaration',
+		attributes: [],
 		specifiers: [
 			{
 				type: 'ImportSpecifier',
-				imported: {
-					type: 'Identifier',
-					name: 'defineVaporComponent',
-					metadata: { path: [] },
-				},
-				local: {
-					type: 'Identifier',
-					name: 'defineVaporComponent',
-					metadata: { path: [] },
-				},
+				imported: builders.id('defineVaporComponent'),
+				local: builders.id('defineVaporComponent'),
+				importKind: 'value',
 				metadata: { path: [] },
 			},
 		],
-		source: {
-			type: 'Literal',
-			value: 'vue',
-			raw: "'vue'",
-		},
+		importKind: 'value',
+		source: builders.literal('vue'),
 		metadata: { path: [] },
 	});
 }
