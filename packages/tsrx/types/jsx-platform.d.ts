@@ -172,6 +172,15 @@ export interface JsxPlatform {
 		 * Default: `true`.
 		 */
 		scanUseServerDirectiveForAwaitWithCustomValidator?: boolean;
+		/**
+		 * Optional branded compiler error for targets that cannot lower
+		 * `try { ... } pending { ... }` in component template context.
+		 *
+		 * When provided, the shared try-block lowering rejects any `pending`
+		 * block with this message instead of emitting a React-style
+		 * `<Suspense fallback={...}>` wrapper.
+		 */
+		unsupportedTryPendingMessage?: string;
 	};
 
 	/**

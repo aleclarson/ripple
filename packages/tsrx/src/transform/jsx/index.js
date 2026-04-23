@@ -1848,7 +1848,7 @@ function switch_statement_to_jsx_child(node, transform_context) {
  * - `pending` → `<Suspense fallback={...}>`
  * - `catch` → `<TsrxErrorBoundary fallback={(err, reset) => ...}>`
  * - both → ErrorBoundary wraps Suspense
- * - `finally` blocks are not supported in component template context
+ * - JavaScript `try/finally` is not part of component template control flow
  *
  * @param {any} node
  * @param {TransformContext} transform_context
@@ -1862,7 +1862,7 @@ function try_statement_to_jsx_child(node, transform_context) {
 	if (finalizer) {
 		throw create_compile_error(
 			finalizer,
-			`${transform_context.platform.name} TSRX does not support \`finally\` blocks in component templates. Move the try statement into a function if you need a finally block.`,
+			`${transform_context.platform.name} TSRX does not support JavaScript \`try/finally\` in component templates. \`finally\` is not part of TSRX control flow; move the try/finally into a function if you need cleanup logic.`,
 		);
 	}
 
@@ -1870,6 +1870,13 @@ function try_statement_to_jsx_child(node, transform_context) {
 		throw create_compile_error(
 			node,
 			'Component try statements must have a `pending` or `catch` block.',
+		);
+	}
+
+	if (pending && transform_context.platform.validation.unsupportedTryPendingMessage) {
+		throw create_compile_error(
+			pending,
+			transform_context.platform.validation.unsupportedTryPendingMessage,
 		);
 	}
 

@@ -17,6 +17,9 @@
     ".": {
       "types": "./types/index.d.ts",
       "default": "./src/index.js"
+    },
+    "./error-boundary": {
+      "default": "./src/error-boundary.js"
     }
   },
   "dependencies": {

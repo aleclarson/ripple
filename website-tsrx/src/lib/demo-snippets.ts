@@ -128,7 +128,7 @@ export const DEMO_SNIPPETS: DemoSnippet[] = [
 	{
 		value: 'error-boundary',
 		label: 'Try/catch boundary',
-    targets: ['react', 'preact', 'ripple', 'solid'],
+    targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
 		source: `component SafeProfile({ userId }: { userId: string }) {
   try {
     <UserProfile id={userId} />

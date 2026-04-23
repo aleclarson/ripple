@@ -799,7 +799,7 @@ describe('@tsrx/react basic', () => {
 		expect(code).toContain('reset');
 	});
 
-	it('rejects finally blocks in component templates', () => {
+	it('rejects JavaScript try/finally in component templates', () => {
 		expect(() =>
 			compile(
 				`export component App() {
@@ -813,7 +813,7 @@ describe('@tsrx/react basic', () => {
 				}`,
 				'App.tsrx',
 			),
-		).toThrow('does not support `finally` blocks');
+		).toThrow('does not support JavaScript `try/finally`');
 	});
 
 	it('rejects try/pending when try body has no JSX', () => {

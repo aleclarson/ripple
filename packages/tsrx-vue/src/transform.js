@@ -12,9 +12,9 @@ import {
 /**
  * Minimal Vue platform descriptor consumed by `createJsxTransform`.
  *
- * This first pass only establishes Vue Vapor component wrapping plus plain JSX
- * element emission. Reactive control-flow and async component bodies stay
- * explicitly unsupported until the Vue target owns those lowerings.
+ * Vue largely reuses the shared JSX lowering while wrapping compiled
+ * components in `defineVaporComponent(...)` and handling its extra imports.
+ * Async component bodies still stay explicitly unsupported.
  *
  * @type {JsxPlatform}
  */
@@ -22,7 +22,7 @@ const vue_platform = {
 	name: 'Vue',
 	imports: {
 		suspense: 'vue',
-		errorBoundary: 'vue',
+		errorBoundary: '@tsrx/vue/error-boundary',
 	},
 	jsx: {
 		rewriteClassAttr: false,
@@ -31,6 +31,8 @@ const vue_platform = {
 	validation: {
 		requireUseServerForAwait: true,
 		scanUseServerDirectiveForAwaitWithCustomValidator: false,
+		unsupportedTryPendingMessage:
+			'Vue TSRX does not support `pending` blocks in component templates yet. Vue Suspense uses fallback slots rather than a `fallback` prop, so `try { ... } pending { ... }` cannot be lowered correctly for this target yet.',
 	},
 	hooks: {
 		initialState: () => ({
@@ -41,11 +43,6 @@ const vue_platform = {
 				await_expression,
 				'`await` is not yet supported in Vue TSRX components.',
 			);
-		},
-		controlFlow: {
-			tryStatement(node) {
-				throw unsupported_vue_feature(node, '`try` statements');
-			},
 		},
 		componentToFunction(component, ctx, helper_state) {
 			ctx.needs_define_vapor_component = true;
@@ -145,49 +142,74 @@ function unsupported_vue_feature(node, feature) {
  * @returns {void}
  */
 function inject_vue_imports(program, transform_context) {
-	if (!transform_context.needs_define_vapor_component) {
-		return;
+	if (transform_context.needs_define_vapor_component) {
+		ensure_named_import(program, 'vue', 'defineVaporComponent');
 	}
 
+	if (transform_context.needs_suspense) {
+		ensure_named_import(program, 'vue', 'Suspense');
+	}
+
+	if (transform_context.needs_error_boundary) {
+		ensure_named_import(program, '@tsrx/vue/error-boundary', 'TsrxErrorBoundary');
+	}
+}
+
+/**
+ * @param {import('estree').Program} program
+ * @param {string} source
+ * @param {string} name
+ * @returns {void}
+ */
+function ensure_named_import(program, source, name) {
 	for (const statement of program.body) {
-		if (statement.type !== 'ImportDeclaration' || statement.source?.value !== 'vue') {
+		if (statement.type !== 'ImportDeclaration' || statement.source?.value !== source) {
 			continue;
 		}
 
-		const has_define_vapor_component = statement.specifiers.some(
+		const has_specifier = statement.specifiers.some(
 			(/** @type {any} */ specifier) =>
 				specifier.type === 'ImportSpecifier' &&
 				specifier.imported?.type === 'Identifier' &&
-				specifier.imported.name === 'defineVaporComponent',
+				specifier.imported.name === name,
 		);
 
-		if (!has_define_vapor_component) {
-			statement.specifiers.push({
-				type: 'ImportSpecifier',
-				imported: builders.id('defineVaporComponent'),
-				local: builders.id('defineVaporComponent'),
-				importKind: 'value',
-				metadata: { path: [] },
-			});
+		if (!has_specifier) {
+			statement.specifiers.push(create_import_specifier(name));
 		}
 
 		return;
 	}
 
-	program.body.unshift({
+	program.body.unshift(create_import_declaration(source, [create_import_specifier(name)]));
+}
+
+/**
+ * @param {string} name
+ * @returns {any}
+ */
+function create_import_specifier(name) {
+	return {
+		type: 'ImportSpecifier',
+		imported: builders.id(name),
+		local: builders.id(name),
+		importKind: 'value',
+		metadata: { path: [] },
+	};
+}
+
+/**
+ * @param {string} source
+ * @param {any[]} specifiers
+ * @returns {any}
+ */
+function create_import_declaration(source, specifiers) {
+	return {
 		type: 'ImportDeclaration',
 		attributes: [],
-		specifiers: [
-			{
-				type: 'ImportSpecifier',
-				imported: builders.id('defineVaporComponent'),
-				local: builders.id('defineVaporComponent'),
-				importKind: 'value',
-				metadata: { path: [] },
-			},
-		],
+		specifiers,
 		importKind: 'value',
-		source: builders.literal('vue'),
+		source: builders.literal(source),
 		metadata: { path: [] },
-	});
+	};
 }

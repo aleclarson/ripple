@@ -177,19 +177,64 @@ describe('@tsrx/vue basic', () => {
 		expect(code).toContain('return <div>{label}</div>;');
 	});
 
-	it('rejects try statements in component bodies', () => {
+	it('compiles try/catch into a Vue error boundary wrapper', () => {
+		const { code } = compile(
+			`component ThrowingChild() {
+				<div>{'might throw'}</div>
+			}
+
+			component App() {
+				try {
+					<ThrowingChild />
+				} catch (error) {
+					<div>{error.message}</div>
+				}
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('TsrxErrorBoundary');
+		expect(code).toContain("from '@tsrx/vue/error-boundary'");
+		expect(code).toContain('fallback={');
+		expect(code).toContain('error.message');
+		expect(code).not.toContain('not yet supported in Vue TSRX');
+		expect(code).not.toContain('Suspense');
+	});
+
+	it('rejects pending blocks in component try statements with a Vue-specific explanation', () => {
 		expect(() =>
 			compile(
 				`component App() {
 					try {
 						<div>{'Async content'}</div>
-					} catch (error) {
-						<div>{error.message}</div>
+					} pending {
+						<div>{'Loading...'}</div>
+					} catch (error, reset) {
+						<button onClick={reset}>{error.message}</button>
 					}
 				}`,
 				'App.tsrx',
 			),
-		).toThrow(/`try` statements are not yet supported in Vue TSRX\./);
+		).toThrow(
+			/Vue TSRX does not support `pending` blocks in component templates yet\. Vue Suspense uses fallback slots rather than a `fallback` prop/,
+		);
+	});
+
+	it('rejects JavaScript try/finally in component bodies', () => {
+		expect(() =>
+			compile(
+				`component App() {
+					try {
+						<div>{'content'}</div>
+					} catch (error) {
+						<div>{error.message}</div>
+					} finally {
+						log(error)
+					}
+				}`,
+				'App.tsrx',
+			),
+		).toThrow(/does not support JavaScript `try\/finally`/);
 	});
 
 	it('rejects await in component bodies', () => {
