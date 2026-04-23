@@ -112,6 +112,15 @@ export default defineConfig({
 			},
 			{
 				test: {
+					name: 'bun-plugin',
+					include: ['packages/bun-plugin/tests/**/*.test.js'],
+					environment: 'node',
+					globals: true,
+				},
+				plugins: [],
+			},
+			{
+				test: {
 					name: 'tsrx-solid-runtime',
 					include: ['packages/vite-plugin-solid/tests/**/*.test.tsrx'],
 					environment: 'jsdom',
