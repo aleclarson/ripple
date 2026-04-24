@@ -25,6 +25,33 @@ The plugin compiles `.tsrx` modules with `@tsrx/ripple`. When a component emits
 CSS, the plugin imports a sibling virtual CSS module so Bun can include the styles
 in the build graph.
 
+## Testing With `bun:test`
+
+Register the plugin from a Bun test preload file before importing `.tsrx` modules
+in tests.
+
+```ts
+// test/setup.ts
+import { ripple } from '@ripple-ts/bun-plugin';
+
+Bun.plugin(ripple());
+```
+
+```toml
+# bunfig.toml
+[test]
+preload = ["./test/setup.ts"]
+```
+
+```ts
+import { expect, test } from 'bun:test';
+import { App } from './App.tsrx';
+
+test('imports a .tsrx module', () => {
+  expect(App).toBeDefined();
+});
+```
+
 ## Options
 
 - `mode`: `'auto' | 'client' | 'server'` (default: `'auto'`). Auto mode treats

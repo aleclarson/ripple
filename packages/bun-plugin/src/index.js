@@ -102,8 +102,11 @@ export function ripple(options = {}) {
 		name: '@ripple-ts/bun-plugin',
 
 		setup(build) {
-			const root = build.config.root ?? process.cwd();
-			const mode = resolve_mode(options.mode, build.config.target);
+			// build.config is only present for Bun.build(); runtime registration
+			// via Bun.plugin(), including bun:test preloads, does not provide it.
+			const build_config = build.config ?? {};
+			const root = build_config.root ?? process.cwd();
+			const mode = resolve_mode(options.mode, build_config.target);
 			const emit_css = options.emitCss ?? true;
 			const dev = options.dev ?? false;
 			const hmr = options.hmr ?? (dev && mode === 'client');
