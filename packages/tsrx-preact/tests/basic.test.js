@@ -13,6 +13,54 @@ runSharedSourceMappingTests({
 runSharedCompileTests({ compile, name: 'preact', classAttrName: 'class' });
 
 describe('@tsrx/preact basic', () => {
+	it('preserves outer early-return narrowing when the branch renders before returning', () => {
+		const { code } = compile(
+			`declare function getFoo(): string | null;
+
+			export component Test() {
+				const foo = getFoo();
+
+				if (!foo) {
+					<div>{"Foo not found"}</div>
+					return;
+				}
+
+				<div>{foo.trim()}</div>
+			}`,
+			'Test.tsrx',
+		);
+
+		expect(code).toContain('if (!foo) {');
+		expect(code).toContain('return Test__static1;');
+		expect(code).toContain('return <div>{foo.trim()}</div>;');
+		expect(code).not.toContain('return <>{(() =>');
+	});
+
+	it('does not shadow outer JSX captures in nested rendered early-return branches', () => {
+		const { code } = compile(
+			`export component App() {
+				let value = 'outer';
+				<p>{value}</p>
+				value = 'after outer';
+
+				if (value) {
+					<span>{value}</span>
+					value = 'branch';
+					<b>{value}</b>
+					return;
+				}
+
+				<i>{value}</i>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code.match(/const _tsrx_child_0/g)).toHaveLength(1);
+		expect(code).toContain('const _tsrx_child_1 = <span>{value}</span>;');
+		expect(code).toContain('const _tsrx_child_2 = <b>{value}</b>;');
+		expect(code).toContain('return <>{_tsrx_child_0}{_tsrx_child_1}{_tsrx_child_2}</>;');
+	});
+
 	it('imports Suspense from preact/compat when try/pending is used', () => {
 		const { code } = compile(
 			`export component App() {

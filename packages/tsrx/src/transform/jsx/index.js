@@ -55,6 +55,8 @@ import { is_hoist_safe_jsx_node } from '../jsx-hoist.js';
  * }} TransformContext
  */
 
+/** @typedef {{ next: number }} CaptureState */
+
 /**
  * @typedef {{ source_name: string, read: () => any }} LazyBinding
  */
@@ -404,6 +406,7 @@ function component_to_function_declaration(component, transform_context, walk_he
  * @param {{ base_name: string, next_id: number, helpers: AST.FunctionDeclaration[], statics: any[] }} helper_state
  * @param {Map<string, AST.Identifier>} available_bindings
  * @param {TransformContext} transform_context
+ * @param {CaptureState} [capture_state]
  * @returns {any[]}
  */
 function build_component_statements(
@@ -411,10 +414,11 @@ function build_component_statements(
 	helper_state,
 	available_bindings,
 	transform_context,
+	capture_state = { next: 0 },
 ) {
 	const split_index = find_hook_safe_split_index(body_nodes);
 	if (split_index === -1) {
-		return build_render_statements(body_nodes, false, transform_context);
+		return build_render_statements(body_nodes, false, transform_context, [], capture_state);
 	}
 
 	const statements = [];
@@ -423,7 +427,6 @@ function build_component_statements(
 
 	const pre_split_body = body_nodes.slice(0, split_index);
 	const interleaved = is_interleaved_body(pre_split_body);
-	let capture_index = 0;
 
 	for (let i = 0; i < split_index; i += 1) {
 		const child = body_nodes[i];
@@ -433,15 +436,22 @@ function build_component_statements(
 			return statements;
 		}
 
-		if (is_lone_return_if_statement(child)) {
-			statements.push(create_component_lone_return_if_statement(child, render_nodes));
+		if (is_early_return_if_statement(child)) {
+			statements.push(
+				create_component_early_return_if_statement(
+					child,
+					render_nodes,
+					transform_context,
+					capture_state,
+				),
+			);
 			continue;
 		}
 
 		if (is_jsx_child(child)) {
 			const jsx = to_jsx_child(child, transform_context);
 			if (interleaved && is_capturable_jsx_child(jsx)) {
-				const { declaration, reference } = captureJsxChild(jsx, capture_index++);
+				const { declaration, reference } = captureJsxChild(jsx, capture_state.next++);
 				statements.push(declaration);
 				render_nodes.push(reference);
 			} else {
@@ -508,11 +518,21 @@ function build_component_statements(
  * @param {any[]} body_nodes
  * @param {boolean} return_null_when_empty
  * @param {TransformContext} transform_context
+ * @param {any[]} [initial_render_nodes]
+ * @param {CaptureState} [capture_state]
  * @returns {any[]}
  */
-function build_render_statements(body_nodes, return_null_when_empty, transform_context) {
+function build_render_statements(
+	body_nodes,
+	return_null_when_empty,
+	transform_context,
+	initial_render_nodes = [],
+	capture_state = { next: 0 },
+) {
 	const statements = [];
-	const render_nodes = [];
+	const render_nodes = initial_render_nodes.map((node) =>
+		clone_expression_node_without_locations(node),
+	);
 
 	// Create a new bindings map so inner-scope bindings from
 	// collect_statement_bindings don't leak to the caller's scope.
@@ -525,7 +545,6 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 	// any JSX is constructed, and every JSX child would observe the final
 	// state of mutable variables.
 	const interleaved = is_interleaved_body(body_nodes);
-	let capture_index = 0;
 
 	for (const child of body_nodes) {
 		if (is_bare_return_statement(child)) {
@@ -534,15 +553,22 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 			return statements;
 		}
 
-		if (is_lone_return_if_statement(child)) {
-			statements.push(create_component_lone_return_if_statement(child, render_nodes));
+		if (is_early_return_if_statement(child)) {
+			statements.push(
+				create_component_early_return_if_statement(
+					child,
+					render_nodes,
+					transform_context,
+					capture_state,
+				),
+			);
 			continue;
 		}
 
 		if (is_jsx_child(child)) {
 			const jsx = to_jsx_child(child, transform_context);
 			if (interleaved && is_capturable_jsx_child(jsx)) {
-				const { declaration, reference } = captureJsxChild(jsx, capture_index++);
+				const { declaration, reference } = captureJsxChild(jsx, capture_state.next++);
 				statements.push(declaration);
 				render_nodes.push(reference);
 			} else {
@@ -572,7 +598,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 
 /**
  * React-specific wrapper around the core `isInterleavedBody` helper that
- * ignores bare `return` / lone return-if statements. Those are rewriting
+ * ignores bare `return` / early return-if statements. Those are rewriting
  * signals rather than user-visible side effects, so JSX children around
  * them don't need capturing.
  *
@@ -581,7 +607,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
  */
 function is_interleaved_body(body_nodes) {
 	const filtered = body_nodes.filter(
-		(child) => !is_bare_return_statement(child) && !is_lone_return_if_statement(child),
+		(child) => !is_bare_return_statement(child) && !is_early_return_if_statement(child),
 	);
 	return is_interleaved_body_core(filtered, is_jsx_child);
 }
@@ -592,7 +618,7 @@ function is_interleaved_body(body_nodes) {
  */
 function find_hook_safe_split_index(body_nodes) {
 	for (let i = 0; i < body_nodes.length; i += 1) {
-		if (!is_lone_return_if_statement(body_nodes[i])) {
+		if (!is_early_return_if_statement(body_nodes[i])) {
 			continue;
 		}
 
@@ -1111,7 +1137,7 @@ function is_bare_return_statement(node) {
  * @param {any} node
  * @returns {boolean}
  */
-function is_lone_return_if_statement(node) {
+function is_early_return_if_statement(node) {
 	if (node?.type !== 'IfStatement' || node.alternate) {
 		return false;
 	}
@@ -1119,7 +1145,10 @@ function is_lone_return_if_statement(node) {
 	const consequent_body =
 		node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
 
-	return consequent_body.length === 1 && is_bare_return_statement(consequent_body[0]);
+	return (
+		consequent_body.length > 0 &&
+		is_bare_return_statement(consequent_body[consequent_body.length - 1])
+	);
 }
 
 /**
@@ -1154,11 +1183,19 @@ function create_component_return_statement(
 /**
  * @param {any} node
  * @param {any[]} render_nodes
+ * @param {TransformContext} transform_context
+ * @param {CaptureState} capture_state
  * @returns {any}
  */
-function create_component_lone_return_if_statement(node, render_nodes) {
+function create_component_early_return_if_statement(
+	node,
+	render_nodes,
+	transform_context,
+	capture_state,
+) {
 	const consequent_body =
 		node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+	const branch_body = consequent_body.slice(0, -1);
 
 	return set_loc(
 		/** @type {any} */ ({
@@ -1167,7 +1204,13 @@ function create_component_lone_return_if_statement(node, render_nodes) {
 			consequent: set_loc(
 				/** @type {any} */ ({
 					type: 'BlockStatement',
-					body: [create_component_return_statement(render_nodes, consequent_body[0], false)],
+					body: build_render_statements(
+						branch_body,
+						true,
+						transform_context,
+						render_nodes,
+						capture_state,
+					),
 					metadata: { path: [] },
 				}),
 				node.consequent,
@@ -1315,7 +1358,7 @@ function child_contains_return_semantics(node) {
 		return false;
 	}
 
-	if (node.type === 'ReturnStatement' || is_lone_return_if_statement(node)) {
+	if (node.type === 'ReturnStatement' || is_early_return_if_statement(node)) {
 		return true;
 	}
 
