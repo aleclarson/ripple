@@ -1,5 +1,5 @@
 ---
-"@tsrx/tsc": patch
+"@tsrx/typescript-plugin": patch
 ---
 
-Add a `tsrx-tsc` CLI wrapper that runs TypeScript with TSRX file support.
+Add a `tsrx-tsc` bin that runs TypeScript with TSRX file support.
