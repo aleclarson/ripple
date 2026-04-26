@@ -28,7 +28,8 @@
       "types": "./types/acorn.d.ts"
     },
     "./test-harness/source-mappings": "./tests/shared/source-mappings.js",
-    "./test-harness/compile": "./tests/shared/compile.js"
+    "./test-harness/compile": "./tests/shared/compile.js",
+    "./test-harness/typescript-diagnostics": "./tests/shared/typescript-diagnostics.js"
   },
   "dependencies": {
     "@jridgewell/sourcemap-codec": "catalog:default",

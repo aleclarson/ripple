@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runSharedCompileTests } from '@tsrx/core/test-harness/compile';
 import { runSharedSourceMappingTests } from '@tsrx/core/test-harness/source-mappings';
+import { getTypeDiagnostics } from '@tsrx/core/test-harness/typescript-diagnostics';
 import { compile, compile_to_volar_mappings } from '../src/index.js';
 
 runSharedSourceMappingTests({
@@ -80,6 +81,26 @@ describe('@tsrx/preact basic', () => {
 		);
 
 		expect(code).toContain("{'preact tsx'}");
+	});
+
+	it('preserves component type parameters used by prop aliases', () => {
+		const { code } = compile(
+			`type Props<Item> = {
+				items: readonly Item[];
+			}
+
+			export component MyComponent<Item>(props: Props<Item>) {
+				<div />
+			}`,
+			'MyComponent.tsrx',
+		);
+
+		expect(
+			getTypeDiagnostics(code, {
+				fileName: new URL('./generated.tsx', import.meta.url),
+				jsxImportSource: 'preact',
+			}),
+		).toEqual([]);
 	});
 
 	it('rejects unsupported tsx compat kinds with Preact-branded message', () => {
