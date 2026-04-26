@@ -667,6 +667,22 @@ importers:
         specifier: ^4.1.0
         version: 4.1.1
 
+  packages/tsc:
+    dependencies:
+      '@tsrx/typescript-plugin':
+        specifier: workspace:*
+        version: link:../typescript-plugin
+      '@volar/typescript':
+        specifier: catalog:default
+        version: 2.4.28
+    devDependencies:
+      '@types/node':
+        specifier: catalog:default
+        version: 24.11.0
+      typescript:
+        specifier: catalog:default
+        version: 5.9.3
+
   packages/tsrx:
     dependencies:
       '@jridgewell/sourcemap-codec':
