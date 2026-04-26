@@ -9,6 +9,8 @@ const { runTsc } = /** @type {typeof import('@volar/typescript/lib/quickstart/ru
 );
 const tscPath = require.resolve('typescript/lib/tsc.js');
 
+process.env.TSRX_TSC = 'true';
+
 runTsc(
 	tscPath,
 	{

@@ -1,7 +1,7 @@
 /** @import { CodeMapping } from '@tsrx/ripple' */
 /** @import {TSRXCompileError, VolarMappingsResult} from '@tsrx/ripple' */
 
-/** @typedef {{ compile_to_volar_mappings(source: string, filename: string, options?: { loose?: boolean }): VolarMappingsResult }} TSRXCompilerModule */
+/** @typedef {{ compile?: (source: string, filename: string, options?: { loose?: boolean }) => unknown, compile_to_volar_mappings(source: string, filename: string, options?: { loose?: boolean }): VolarMappingsResult }} TSRXCompilerModule */
 
 /** @typedef {Map<string, CodeMapping>} CachedMappings */
 /** @typedef {import('typescript').CompilerOptions} CompilerOptions */
@@ -26,6 +26,7 @@ const require = createRequire(import.meta.url);
 const root_dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const { log, logWarning, logError } = createLogging('[Ripple Language]');
+const loggedCompilationFailures = new Set();
 export const RIPPLE_EXTENSIONS = ['.tsrx'];
 /** @typedef {[string, string[], string[], string[]]} CompilerCandidate */
 /** @type {CompilerCandidate[]} */
@@ -281,8 +282,32 @@ export class TSRXVirtualCode {
 		} catch (e) {
 			const error = /** @type {TSRXCompileError} */ (e);
 			logError('Ripple compilation failed for', this.fileName, ':', error);
+			if (process.env.TSRX_TSC === 'true') {
+				logCompilationFailure(this.fileName, error);
+			}
 			error.type = 'fatal';
 			this.fatalErrors.push(error);
+
+			const fallbackCode = getFallbackGeneratedCode(this.tsrx, newCode, this.fileName);
+			if (fallbackCode !== undefined) {
+				transpiled = {
+					code: fallbackCode,
+					mappings: [
+						{
+							sourceOffsets: [0],
+							generatedOffsets: [0],
+							lengths: [newCode.length],
+							generatedLengths: [fallbackCode.length],
+							data: {
+								verification: false,
+								customData: {},
+							},
+						},
+					],
+					errors: [],
+					cssMappings: [],
+				};
+			}
 		}
 
 		if (transpiled && transpiled.code) {
@@ -349,7 +374,8 @@ export class TSRXVirtualCode {
 			log('Compilation failed, only display where the compilation error occurred.');
 
 			this.originalCode = newCode;
-			this.generatedCode = newCode;
+			const fallbackGeneratedCode = newCode.replace(/[^\r\n]/g, ' ') + '\nexport {};\n';
+			this.generatedCode = fallbackGeneratedCode;
 
 			// Create 1:1 mappings for the entire content
 			this.mappings = [
@@ -357,9 +383,9 @@ export class TSRXVirtualCode {
 					sourceOffsets: [0],
 					generatedOffsets: [0],
 					lengths: [newCode.length],
-					generatedLengths: [newCode.length],
+					generatedLengths: [fallbackGeneratedCode.length],
 					data: {
-						verification: true, // disable TS since we're using source code as generated code
+						verification: false,
 						customData: {},
 					},
 				},
@@ -423,6 +449,45 @@ export class TSRXVirtualCode {
 	findMappingBySourceRange(start, end) {
 		this.#buildMappingCache();
 		return /** @type {CachedMappings} */ (this.#mappingSourceToGen).get(`${start}-${end}`) ?? null;
+	}
+}
+
+/**
+ * @param {string} file_name
+ * @param {unknown} error
+ */
+function logCompilationFailure(file_name, error) {
+	const message = error instanceof Error ? error.message : String(error);
+	const key = `${file_name}\0${message}`;
+	if (loggedCompilationFailures.has(key)) {
+		return;
+	}
+	loggedCompilationFailures.add(key);
+	console.error(
+		`[tsrx-tsc] Volar mappings failed for ${file_name}; using generated code without diagnostics: ${message}`,
+	);
+}
+
+/**
+ * @param {TSRXCompilerModule} tsrx
+ * @param {string} source
+ * @param {string} file_name
+ * @returns {string | undefined}
+ */
+function getFallbackGeneratedCode(tsrx, source, file_name) {
+	if (typeof tsrx.compile !== 'function') {
+		return;
+	}
+	try {
+		const result = /** @type {any} */ (tsrx.compile(source, file_name, { loose: true }));
+		if (typeof result?.code === 'string') {
+			return result.code;
+		}
+		if (typeof result?.js?.code === 'string') {
+			return result.js.code;
+		}
+	} catch (error) {
+		logError('Fallback compilation failed for', file_name, ':', error);
 	}
 }
 
