@@ -540,6 +540,33 @@ describe('basic client > components & composition', () => {
 		expect(container.querySelector('.wrapper .inner').textContent).toBe('inner content');
 	});
 
+	it(
+		'renders nested component declarations in composite children that reference parent props',
+		() => {
+			component Host(props: { asChild: Component }) {
+				<div class="host">
+					<@props.asChild href="/docs" />
+				</div>
+			}
+
+			component Parent(props: { label: string }) {
+				<Host>
+					component asChild({ href }: { href: string }) {
+						<a class="link" {href}>{props.label}</a>
+					}
+				</Host>
+			}
+
+			component App() {
+				<Parent label="Read docs" />
+			}
+
+			render(App);
+			expect(container.querySelector('.link')?.textContent).toBe('Read docs');
+			expect(container.querySelector('.link')?.getAttribute('href')).toBe('/docs');
+		},
+	);
+
 	it('renders nested components declared inside composite children with prop passing', () => {
 		component Wrapper(props: PropsWithChildren<{}>) {
 			<div class="wrapper">{props.children}</div>
