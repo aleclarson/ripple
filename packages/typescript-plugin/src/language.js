@@ -1,7 +1,8 @@
 /** @import { CodeMapping } from '@tsrx/ripple' */
 /** @import {TSRXCompileError, VolarMappingsResult} from '@tsrx/ripple' */
 
-/** @typedef {{ compile?: (source: string, filename: string, options?: { loose?: boolean }) => unknown, compile_to_volar_mappings(source: string, filename: string, options?: { loose?: boolean }): VolarMappingsResult }} TSRXCompilerModule */
+/** @typedef {{ code?: string, js?: { code?: string }, errors?: TSRXCompileError[] }} TSRXCompileResult */
+/** @typedef {{ compile?: (source: string, filename: string, options?: { loose?: boolean }) => TSRXCompileResult, compile_to_volar_mappings(source: string, filename: string, options?: { loose?: boolean }): VolarMappingsResult }} TSRXCompilerModule */
 
 /** @typedef {Map<string, CodeMapping>} CachedMappings */
 /** @typedef {import('typescript').CompilerOptions} CompilerOptions */
@@ -284,28 +285,32 @@ export class TSRXVirtualCode {
 			const error = /** @type {TSRXCompileError} */ (e);
 			logError('Ripple compilation failed for', this.fileName, ':', error);
 			if (process.env.TSRX_TSC === 'true') {
-				logCompilationFailure(this.fileName, error);
+				logTSRXErrors(this.fileName, [error]);
 
 				// In tsrx-tsc, swap in a best-effort transpile so we don't fall through
 				// to the raw-source fallback below (which would produce a flood of
 				// bogus TS diagnostics in the CLI output, drowning the real error).
-				const fallbackCode = getFallbackGeneratedCode(this.tsrx, newCode, this.fileName);
-				if (fallbackCode !== undefined) {
+				// We surface the loose-mode usage errors collected by `compile` so
+				// the user still sees the same non-fatal diagnostics they'd get on
+				// a successful loose-mode compile.
+				const fallback = getFallbackGeneratedCode(this.tsrx, newCode, this.fileName);
+				if (fallback !== undefined) {
+					logTSRXErrors(this.fileName, fallback.errors);
 					transpiled = {
-						code: fallbackCode,
+						code: fallback.code,
 						mappings: [
 							{
 								sourceOffsets: [0],
 								generatedOffsets: [0],
 								lengths: [newCode.length],
-								generatedLengths: [fallbackCode.length],
+								generatedLengths: [fallback.code.length],
 								data: {
 									verification: false,
 									customData: {},
 								},
 							},
 						],
-						errors: [],
+						errors: fallback.errors,
 						cssMappings: [],
 					};
 				}
@@ -320,6 +325,10 @@ export class TSRXVirtualCode {
 			this.generatedCode = transpiled.code;
 			this.mappings = transpiled.mappings ?? [];
 			this.usageErrors = transpiled.errors;
+
+			if (process.env.TSRX_TSC === 'true' && transpiled.errors.length > 0) {
+				logTSRXErrors(this.fileName, transpiled.errors);
+			}
 
 			const cssMappings = transpiled.cssMappings;
 			if (cssMappings.length > 0) {
@@ -469,37 +478,43 @@ export class TSRXVirtualCode {
 
 /**
  * @param {string} file_name
- * @param {Error | string} error
+ * @param {ReadonlyArray<unknown>} errors
  */
-function logCompilationFailure(file_name, error) {
-	const message = error instanceof Error ? error.message : String(error);
-	const key = `${file_name}\0${message}`;
-	if (loggedCompilationFailures.has(key)) {
-		return;
+function logTSRXErrors(file_name, errors) {
+	for (const error of errors) {
+		const message =
+			error && typeof error === 'object' && 'message' in error
+				? String(/** @type {{ message: unknown }} */ (error).message)
+				: String(error);
+		const key = `${file_name}\0${message}`;
+		if (loggedCompilationFailures.has(key)) {
+			continue;
+		}
+		loggedCompilationFailures.add(key);
+		console.error(`[tsrx-tsc] ${file_name}: ${message}`);
 	}
-	loggedCompilationFailures.add(key);
-	console.error(
-		`[tsrx-tsc] Volar mappings failed for ${file_name}; using generated code without diagnostics: ${message}`,
-	);
 }
 
 /**
  * @param {TSRXCompilerModule} tsrx
  * @param {string} source
  * @param {string} file_name
- * @returns {string | undefined}
+ * @returns {{ code: string, errors: TSRXCompileError[] } | undefined}
  */
 function getFallbackGeneratedCode(tsrx, source, file_name) {
 	if (typeof tsrx.compile !== 'function') {
 		return;
 	}
 	try {
-		const result = /** @type {any} */ (tsrx.compile(source, file_name, { loose: true }));
-		if (typeof result?.code === 'string') {
-			return result.code;
-		}
-		if (typeof result?.js?.code === 'string') {
-			return result.js.code;
+		const result = tsrx.compile(source, file_name, { loose: true });
+		const code =
+			typeof result?.code === 'string'
+				? result.code
+				: typeof result?.js?.code === 'string'
+					? result.js.code
+					: undefined;
+		if (code !== undefined) {
+			return { code, errors: result?.errors ?? [] };
 		}
 	} catch (error) {
 		logError('Fallback compilation failed for', file_name, ':', error);
