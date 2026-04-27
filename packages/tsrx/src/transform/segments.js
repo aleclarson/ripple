@@ -1450,12 +1450,6 @@ export function convert_source_map_to_mappings(
 					}
 				}
 
-				if (node.loc) {
-					mappings.push(
-						get_mapping_from_node(node, src_to_gen_map, gen_line_offsets, mapping_data_verify_only),
-					);
-				}
-
 				return;
 			} else if (node.type === 'SwitchCase') {
 				// Visit in source order: test, consequent
