@@ -82,6 +82,29 @@ describe('@tsrx/preact basic', () => {
 		expect(code).toContain("{'preact tsx'}");
 	});
 
+	it('transforms multiple {ref ...} attributes on one element to a composed ref callback', () => {
+		const source = `export component App() {
+			function refA(node) {}
+			function refB(node) {}
+
+			<div {ref refA} {ref refB}>{'Hello'}</div>
+		}`;
+
+		const { code } = compile(source, 'App.tsrx');
+		const mappings = compile_to_volar_mappings(source, 'App.tsrx');
+
+		expect(code).toContain('_tsrx_apply_ref(refA)');
+		expect(code).toContain('_tsrx_apply_ref(refB)');
+		expect(code).toContain('const _tsrx_ref_cleanup = _tsrx_ref(_tsrx_ref_node)');
+		expect(code).toContain('_tsrx_has_ref_cleanup = true');
+		expect(code).toContain('return () => {');
+		expect(code).toContain('_tsrx_ref_cleanup();');
+		expect(code).toContain('_tsrx_ref(null)');
+		expect(code).not.toContain('ref={refA} ref={refB}');
+		expect(code).not.toContain('{ref refA}');
+		expect(mappings.errors).toEqual([]);
+	});
+
 	it('rejects unsupported tsx compat kinds with Preact-branded message', () => {
 		expect(() =>
 			compile(

@@ -26,6 +26,7 @@ import {
 	to_text_expression,
 } from './ast-builders.js';
 import { render_stylesheets as renderStylesheets } from '../stylesheet.js';
+import * as b from '../../utils/builders.js';
 import { set_location as setLocation } from '../../utils/builders.js';
 import {
 	apply_lazy_transforms,
@@ -2478,7 +2479,33 @@ function to_jsx_expression_container(expression, source_node = expression) {
 function transform_element_attributes_dispatch(attrs, transform_context, element) {
 	const hook = transform_context.platform.hooks?.transformElementAttributes;
 	if (hook) return hook(attrs, transform_context, element);
-	return attrs.map((/** @type {any} */ a) => to_jsx_attribute(a, transform_context));
+	return transform_default_element_attributes(attrs, transform_context);
+}
+
+/**
+ * @param {any[]} attrs
+ * @param {TransformContext} transform_context
+ * @returns {Array<ESTreeJSX.JSXAttribute | ESTreeJSX.JSXSpreadAttribute>}
+ */
+function transform_default_element_attributes(attrs, transform_context) {
+	const ref_attrs = attrs.filter((attr) => attr?.type === 'RefAttribute');
+
+	if (ref_attrs.length <= 1) {
+		return attrs.map((/** @type {any} */ a) => to_jsx_attribute(a, transform_context));
+	}
+
+	/** @type {Array<ESTreeJSX.JSXAttribute | ESTreeJSX.JSXSpreadAttribute>} */
+	const result = [];
+	const last_ref_attr = ref_attrs[ref_attrs.length - 1];
+
+	for (const attr of attrs) {
+		if (attr?.type !== 'RefAttribute') {
+			result.push(to_jsx_attribute(attr, transform_context));
+		} else if (attr === last_ref_attr) {
+			result.push(to_jsx_ref_attribute(create_composed_ref_callback(ref_attrs, transform_context)));
+		}
+	}
+	return result;
 }
 
 /**
@@ -2501,15 +2528,7 @@ function to_jsx_attribute(attr, transform_context) {
 		);
 	}
 	if (attr.type === 'RefAttribute') {
-		// RefAttribute uses `{ref expr}` syntax whose source positions don't map to the
-		// generated `ref={expr}` JSX attribute, so we intentionally omit loc.
-		return /** @type {any} */ ({
-			type: 'JSXAttribute',
-			name: { type: 'JSXIdentifier', name: 'ref', metadata: { path: [] } },
-			value: to_jsx_expression_container(attr.argument),
-			shorthand: false,
-			metadata: { path: [] },
-		});
+		return to_jsx_ref_attribute(attr.argument);
 	}
 
 	// Platforms that expect React-style DOM attrs (React) rewrite `class` to
@@ -2553,6 +2572,317 @@ function to_jsx_attribute(attr, transform_context) {
 	}
 
 	return set_loc(jsx_attribute, attr);
+}
+
+/**
+ * RefAttribute uses `{ref expr}` syntax whose source positions don't map to the
+ * generated `ref={expr}` JSX attribute, so this intentionally omits loc.
+ *
+ * @param {any} argument
+ * @returns {ESTreeJSX.JSXAttribute}
+ */
+function to_jsx_ref_attribute(argument) {
+	return /** @type {any} */ ({
+		type: 'JSXAttribute',
+		name: { type: 'JSXIdentifier', name: 'ref', metadata: { path: [] } },
+		value: to_jsx_expression_container(argument),
+		shorthand: false,
+		metadata: { path: [] },
+	});
+}
+
+/**
+ * @param {any[]} ref_attrs
+ * @param {TransformContext} transform_context
+ * @returns {AST.ArrowFunctionExpression}
+ */
+function create_composed_ref_callback(ref_attrs, transform_context) {
+	const reserved = new Set();
+	const node_id = create_unique_generated_identifier('_tsrx_ref_node', transform_context, reserved);
+	const apply_ref_id = create_unique_generated_identifier(
+		'_tsrx_apply_ref',
+		transform_context,
+		reserved,
+	);
+	const ref_id = create_unique_generated_identifier('_tsrx_ref', transform_context, reserved);
+	const cleanups_id = create_unique_generated_identifier(
+		'_tsrx_ref_cleanups',
+		transform_context,
+		reserved,
+	);
+	const cleanup_id = create_unique_generated_identifier(
+		'_tsrx_ref_cleanup',
+		transform_context,
+		reserved,
+	);
+	const has_cleanup_id = create_unique_generated_identifier(
+		'_tsrx_has_ref_cleanup',
+		transform_context,
+		reserved,
+	);
+
+	return /** @type {any} */ ({
+		type: 'ArrowFunctionExpression',
+		params: [clone_identifier(node_id)],
+		body: {
+			type: 'BlockStatement',
+			body: [
+				create_variable_declaration('let', has_cleanup_id, b.literal(false)),
+				create_variable_declaration('const', cleanups_id, b.array([])),
+				create_variable_declaration(
+					'const',
+					apply_ref_id,
+					create_apply_ref_callback(ref_id, node_id, cleanups_id, cleanup_id, has_cleanup_id),
+				),
+				...ref_attrs.map(
+					(attr) =>
+						/** @type {AST.ExpressionStatement} */ ({
+							type: 'ExpressionStatement',
+							expression: {
+								type: 'CallExpression',
+								callee: clone_identifier(apply_ref_id),
+								arguments: [attr.argument],
+								optional: false,
+								metadata: { path: [] },
+							},
+							metadata: { path: [] },
+						}),
+				),
+				b.if(
+					clone_identifier(has_cleanup_id),
+					b.block([
+						b.return(
+							b.arrow(
+								[],
+								b.block([
+									b.for_of(
+										b.declaration('const', [b.declarator(clone_identifier(cleanup_id))]),
+										clone_identifier(cleanups_id),
+										b.block([b.stmt(b.call(clone_identifier(cleanup_id)))]),
+									),
+								]),
+							),
+						),
+					]),
+					null,
+				),
+			],
+			metadata: { path: [] },
+		},
+		expression: false,
+		generator: false,
+		async: false,
+		metadata: { path: [] },
+	});
+}
+
+/**
+ * @param {AST.Identifier} ref_id
+ * @param {AST.Identifier} node_id
+ * @param {AST.Identifier} cleanups_id
+ * @param {AST.Identifier} cleanup_id
+ * @param {AST.Identifier} has_cleanup_id
+ * @returns {AST.ArrowFunctionExpression}
+ */
+function create_apply_ref_callback(ref_id, node_id, cleanups_id, cleanup_id, has_cleanup_id) {
+	return /** @type {any} */ ({
+		type: 'ArrowFunctionExpression',
+		params: [clone_identifier(ref_id)],
+		body: {
+			type: 'BlockStatement',
+			body: [
+				{
+					type: 'IfStatement',
+					test: {
+						type: 'BinaryExpression',
+						operator: '===',
+						left: {
+							type: 'UnaryExpression',
+							operator: 'typeof',
+							prefix: true,
+							argument: clone_identifier(ref_id),
+							metadata: { path: [] },
+						},
+						right: {
+							type: 'Literal',
+							value: 'function',
+							raw: "'function'",
+							metadata: { path: [] },
+						},
+						metadata: { path: [] },
+					},
+					consequent: {
+						type: 'BlockStatement',
+						body: [
+							create_variable_declaration(
+								'const',
+								cleanup_id,
+								b.call(clone_identifier(ref_id), clone_identifier(node_id)),
+							),
+							b.if(
+								create_typeof_function_test(cleanup_id),
+								b.block([
+									b.stmt(b.assignment('=', clone_identifier(has_cleanup_id), b.literal(true))),
+									create_cleanup_push_statement(cleanups_id, cleanup_id),
+								]),
+								b.if(
+									b.binary('!==', clone_identifier(node_id), create_null_literal()),
+									b.block([
+										create_cleanup_push_statement(
+											cleanups_id,
+											create_function_ref_fallback_callback(ref_id),
+										),
+									]),
+									null,
+								),
+							),
+						],
+						metadata: { path: [] },
+					},
+					alternate: {
+						type: 'IfStatement',
+						test: {
+							type: 'LogicalExpression',
+							operator: '&&',
+							left: {
+								type: 'BinaryExpression',
+								operator: '!==',
+								left: clone_identifier(ref_id),
+								right: create_null_literal(),
+								metadata: { path: [] },
+							},
+							right: {
+								type: 'BinaryExpression',
+								operator: '!==',
+								left: clone_identifier(ref_id),
+								right: {
+									type: 'Identifier',
+									name: 'undefined',
+									metadata: { path: [] },
+								},
+								metadata: { path: [] },
+							},
+							metadata: { path: [] },
+						},
+						consequent: {
+							type: 'BlockStatement',
+							body: [
+								{
+									type: 'ExpressionStatement',
+									expression: {
+										type: 'AssignmentExpression',
+										operator: '=',
+										left: {
+											type: 'MemberExpression',
+											object: clone_identifier(ref_id),
+											property: {
+												type: 'Identifier',
+												name: 'current',
+												metadata: { path: [] },
+											},
+											computed: false,
+											optional: false,
+											metadata: { path: [] },
+										},
+										right: clone_identifier(node_id),
+										metadata: { path: [] },
+									},
+									metadata: { path: [] },
+								},
+								b.if(
+									b.binary('!==', clone_identifier(node_id), create_null_literal()),
+									b.block([
+										create_cleanup_push_statement(
+											cleanups_id,
+											create_object_ref_fallback_callback(ref_id),
+										),
+									]),
+									null,
+								),
+							],
+							metadata: { path: [] },
+						},
+						alternate: null,
+						metadata: { path: [] },
+					},
+					metadata: { path: [] },
+				},
+			],
+			metadata: { path: [] },
+		},
+		expression: false,
+		generator: false,
+		async: false,
+		metadata: { path: [] },
+	});
+}
+
+/**
+ * @param {'const' | 'let' | 'var'} kind
+ * @param {AST.Identifier} id
+ * @param {AST.Expression} init
+ * @returns {AST.VariableDeclaration}
+ */
+function create_variable_declaration(kind, id, init) {
+	return b.declaration(kind, [b.declarator(clone_identifier(id), init)]);
+}
+
+/**
+ * @param {AST.Identifier} id
+ * @returns {AST.BinaryExpression}
+ */
+function create_typeof_function_test(id) {
+	return b.binary('===', b.unary('typeof', clone_identifier(id)), b.literal('function'));
+}
+
+/**
+ * @param {AST.Identifier} cleanups_id
+ * @param {AST.Expression} cleanup
+ * @returns {AST.ExpressionStatement}
+ */
+function create_cleanup_push_statement(cleanups_id, cleanup) {
+	return b.stmt(b.call(b.member(clone_identifier(cleanups_id), 'push'), cleanup));
+}
+
+/**
+ * @param {AST.Identifier} ref_id
+ * @returns {AST.ArrowFunctionExpression}
+ */
+function create_function_ref_fallback_callback(ref_id) {
+	return b.arrow([], b.block([b.stmt(b.call(clone_identifier(ref_id), create_null_literal()))]));
+}
+
+/**
+ * @param {AST.Identifier} ref_id
+ * @returns {AST.ArrowFunctionExpression}
+ */
+function create_object_ref_fallback_callback(ref_id) {
+	return b.arrow(
+		[],
+		b.block([
+			b.stmt(
+				b.assignment('=', b.member(clone_identifier(ref_id), 'current'), create_null_literal()),
+			),
+		]),
+	);
+}
+
+/**
+ * @param {string} base_name
+ * @param {TransformContext} transform_context
+ * @param {Set<string>} reserved
+ * @returns {AST.Identifier}
+ */
+function create_unique_generated_identifier(base_name, transform_context, reserved) {
+	let name = base_name;
+	let index = 1;
+
+	while (reserved.has(name) || transform_context.available_bindings.has(name)) {
+		name = `${base_name}_${index++}`;
+	}
+
+	reserved.add(name);
+	return create_generated_identifier(name);
 }
 
 /**
