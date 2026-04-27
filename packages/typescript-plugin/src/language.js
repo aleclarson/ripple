@@ -26,6 +26,7 @@ const require = createRequire(import.meta.url);
 const root_dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const { log, logWarning, logError } = createLogging('[Ripple Language]');
+/** @type {Set<string>} */
 const loggedCompilationFailures = new Set();
 export const RIPPLE_EXTENSIONS = ['.tsrx'];
 /** @typedef {[string, string[], string[], string[]]} CompilerCandidate */
@@ -284,30 +285,33 @@ export class TSRXVirtualCode {
 			logError('Ripple compilation failed for', this.fileName, ':', error);
 			if (process.env.TSRX_TSC === 'true') {
 				logCompilationFailure(this.fileName, error);
+
+				// In tsrx-tsc, swap in a best-effort transpile so we don't fall through
+				// to the raw-source fallback below (which would produce a flood of
+				// bogus TS diagnostics in the CLI output, drowning the real error).
+				const fallbackCode = getFallbackGeneratedCode(this.tsrx, newCode, this.fileName);
+				if (fallbackCode !== undefined) {
+					transpiled = {
+						code: fallbackCode,
+						mappings: [
+							{
+								sourceOffsets: [0],
+								generatedOffsets: [0],
+								lengths: [newCode.length],
+								generatedLengths: [fallbackCode.length],
+								data: {
+									verification: false,
+									customData: {},
+								},
+							},
+						],
+						errors: [],
+						cssMappings: [],
+					};
+				}
 			}
 			error.type = 'fatal';
 			this.fatalErrors.push(error);
-
-			const fallbackCode = getFallbackGeneratedCode(this.tsrx, newCode, this.fileName);
-			if (fallbackCode !== undefined) {
-				transpiled = {
-					code: fallbackCode,
-					mappings: [
-						{
-							sourceOffsets: [0],
-							generatedOffsets: [0],
-							lengths: [newCode.length],
-							generatedLengths: [fallbackCode.length],
-							data: {
-								verification: false,
-								customData: {},
-							},
-						},
-					],
-					errors: [],
-					cssMappings: [],
-				};
-			}
 		}
 
 		if (transpiled && transpiled.code) {
@@ -374,8 +378,19 @@ export class TSRXVirtualCode {
 			log('Compilation failed, only display where the compilation error occurred.');
 
 			this.originalCode = newCode;
-			const fallbackGeneratedCode = newCode.replace(/[^\r\n]/g, ' ') + '\nexport {};\n';
-			this.generatedCode = fallbackGeneratedCode;
+
+			// In the editor we feed the raw source back as the generated code, with
+			// verification enabled. This lets TS parse it and surface errors at the
+			// broken construct itself — important when a Ripple compile error has no
+			// `pos` (or an unreliable one), since the dedicated diagnostic plugin
+			// would otherwise pin the error to offset 0 (top of file, off-screen)
+			// and the user would have no signal pointing at the actual problem.
+			//
+			// In tsrx-tsc we'd rather emit a clean TS-valid placeholder, but that
+			// path is handled in the catch above (which sets `transpiled` from
+			// `getFallbackGeneratedCode`), so by the time we reach this branch we're
+			// in editor context and want the raw-source behavior.
+			this.generatedCode = newCode;
 
 			// Create 1:1 mappings for the entire content
 			this.mappings = [
@@ -383,9 +398,9 @@ export class TSRXVirtualCode {
 					sourceOffsets: [0],
 					generatedOffsets: [0],
 					lengths: [newCode.length],
-					generatedLengths: [fallbackGeneratedCode.length],
+					generatedLengths: [newCode.length],
 					data: {
-						verification: false,
+						verification: true,
 						customData: {},
 					},
 				},
@@ -454,7 +469,7 @@ export class TSRXVirtualCode {
 
 /**
  * @param {string} file_name
- * @param {unknown} error
+ * @param {Error | string} error
  */
 function logCompilationFailure(file_name, error) {
 	const message = error instanceof Error ? error.message : String(error);

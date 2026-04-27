@@ -6,8 +6,11 @@
   "version": "0.3.33",
   "main": "dist/index.js",
   "bin": {
-    "tsrx-tsc": "./src/tsc.js"
+    "tsrx-tsc": "./dist/tsc.js"
   },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "homepage": "https://ripple-ts.com",
   "repository": {
@@ -16,7 +19,8 @@
     "directory": "packages/typescript-plugin"
   },
   "scripts": {
-    "build": "tsdown"
+    "build": "tsdown",
+    "prepare": "tsdown"
   },
   "bugs": {
     "url": "https://github.com/Ripple-TS/ripple/issues"
