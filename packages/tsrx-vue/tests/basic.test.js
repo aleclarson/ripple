@@ -9,7 +9,7 @@ runSharedSourceMappingTests({
 	name: 'vue',
 	rejectsComponentAwait: true,
 });
-runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name: 'vue' });
+runSharedCompileDiagnosticsTests({ compile, compile_to_volar_mappings, name: 'vue' });
 
 describe('@tsrx/vue basic', () => {
 	it('wraps named component exports in defineVaporComponent', () => {

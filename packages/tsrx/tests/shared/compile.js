@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import ts from 'typescript';
 import { DIAGNOSTIC_CODES } from '../../src/diagnostics.js';
 
 /**
@@ -9,6 +10,7 @@ import { DIAGNOSTIC_CODES } from '../../src/diagnostics.js';
  * }} CompileHarness
  *
  * @typedef {{
+ *   compile: (source: string, filename?: string, options?: any) => { code: string },
  *   compile_to_volar_mappings: (source: string, filename?: string, options?: any) => { errors: Array<{ code?: string }> },
  *   name: string,
  * }} CompileDiagnosticsHarness
@@ -34,13 +36,75 @@ function diagnostic_codes(result) {
 	return result.errors.map((error) => error.code);
 }
 
+const virtual_jsx_types_filename = '/tsrx-shared-jsx.d.ts';
+const virtual_jsx_types = `declare namespace JSX {
+	interface Element {}
+	interface ElementChildrenAttribute {
+		children: {};
+	}
+	interface IntrinsicElements {
+		[name: string]: unknown;
+	}
+}
+declare module 'vue-jsx-vapor' {
+	export function defineVaporComponent<T>(component: T): T;
+}`;
+
+/**
+ * @param {string} code
+ */
+function get_tsx_diagnostics(code) {
+	const filename = '/App.tsx';
+	const options = {
+		jsx: ts.JsxEmit.Preserve,
+		module: ts.ModuleKind.ESNext,
+		moduleResolution: ts.ModuleResolutionKind.Bundler,
+		noEmit: true,
+		skipLibCheck: true,
+		strict: true,
+		target: ts.ScriptTarget.ESNext,
+		types: [],
+	};
+	const host = ts.createCompilerHost(options);
+	const original_get_source_file = host.getSourceFile;
+	host.getSourceFile = (file_name, language_version, on_error, should_create_new_source_file) => {
+		if (file_name === filename) {
+			return ts.createSourceFile(file_name, code, language_version, true, ts.ScriptKind.TSX);
+		}
+		if (file_name === virtual_jsx_types_filename) {
+			return ts.createSourceFile(file_name, virtual_jsx_types, language_version, true);
+		}
+		return original_get_source_file(
+			file_name,
+			language_version,
+			on_error,
+			should_create_new_source_file,
+		);
+	};
+	host.fileExists = (file_name) => {
+		return (
+			file_name === filename ||
+			file_name === virtual_jsx_types_filename ||
+			ts.sys.fileExists(file_name)
+		);
+	};
+	host.readFile = (file_name) => {
+		if (file_name === filename) return code;
+		if (file_name === virtual_jsx_types_filename) return virtual_jsx_types;
+		return ts.sys.readFile(file_name);
+	};
+
+	const program = ts.createProgram([filename, virtual_jsx_types_filename], options, host);
+	return ts.getPreEmitDiagnostics(program);
+}
+
 /**
  * Shared compile/editor diagnostics. These do not assert source-map structure;
  * they only verify that editor-facing compile entry points collect diagnostics.
  *
  * @param {CompileDiagnosticsHarness} harness
  */
-export function runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name }) {
+export function runSharedCompileDiagnosticsTests({ compile, compile_to_volar_mappings, name }) {
 	describe(`[${name}] compile diagnostics`, () => {
 		it('collects volar parser diagnostics without requiring loose mode', () => {
 			const result = compile_to_volar_mappings(
@@ -51,6 +115,30 @@ export function runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, na
 			);
 
 			expect(diagnostic_codes(result)).toContain(DIAGNOSTIC_CODES.JSX_RETURN_IN_COMPONENT);
+		});
+
+		it('uses explicit component type arguments to type render-prop children', () => {
+			const { code } = compile(
+				`type User = { name: string };
+				type Renderable = JSX.Element;
+
+				component RenderProp<Item = any>({ children }: { children: (item: Item) => Renderable }) {
+					{children({} as Item)}
+				}
+
+				export component App() {
+					<RenderProp<User>>
+						{(item) => item.missing}
+					</RenderProp>
+				}`,
+				'App.tsrx',
+			);
+			const diagnostics = get_tsx_diagnostics(code);
+			const messages = diagnostics.map((diagnostic) =>
+				ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+			);
+
+			expect(messages).toContain("Property 'missing' does not exist on type 'User'.");
 		});
 	});
 }

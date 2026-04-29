@@ -14,7 +14,7 @@ runSharedSourceMappingTests({
 });
 
 runSharedCompileTests({ compile, name: 'react', classAttrName: 'className' });
-runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name: 'react' });
+runSharedCompileDiagnosticsTests({ compile, compile_to_volar_mappings, name: 'react' });
 
 /**
  * @import { CodeMapping } from '@tsrx/core/types';

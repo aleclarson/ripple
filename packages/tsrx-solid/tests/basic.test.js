@@ -14,7 +14,7 @@ runSharedSourceMappingTests({
 });
 
 runSharedCompileTests({ compile, name: 'solid', classAttrName: 'class' });
-runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name: 'solid' });
+runSharedCompileDiagnosticsTests({ compile, compile_to_volar_mappings, name: 'solid' });
 
 describe('@tsrx/solid basic', () => {
 	describe('component → function', () => {

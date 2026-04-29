@@ -14,7 +14,7 @@ runSharedSourceMappingTests({
 });
 
 runSharedCompileTests({ compile, name: 'preact', classAttrName: 'class' });
-runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name: 'preact' });
+runSharedCompileDiagnosticsTests({ compile, compile_to_volar_mappings, name: 'preact' });
 
 describe('@tsrx/preact basic', () => {
 	it('imports Suspense from preact/compat when try/pending is used', () => {
