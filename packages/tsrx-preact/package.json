@@ -3,7 +3,7 @@
   "description": "Preact compiler built on @tsrx/core",
   "license": "MIT",
   "author": "Dominic Gannaway",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -26,9 +26,9 @@
       "types": "./types/ref.d.ts",
       "default": "./src/ref.js"
     },
-    "./runtime": {
-      "types": "./types/runtime.d.ts",
-      "default": "./src/runtime.js"
+    "./runtime/iterable": {
+      "types": "./types/runtime/iterable.d.ts",
+      "default": "./src/runtime/iterable.js"
     }
   },
   "dependencies": {
