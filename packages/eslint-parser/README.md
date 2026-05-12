@@ -108,8 +108,6 @@ The parser will successfully parse this and allow ESLint rules (like those from
 
 - [@tsrx/eslint-plugin](https://www.npmjs.com/package/@tsrx/eslint-plugin) -
   ESLint rules for TSRX
-- [@ripple-ts/vite-plugin](https://www.npmjs.com/package/@ripple-ts/vite-plugin) -
-  Vite plugin for TSRX
 - [@tsrx/prettier-plugin](https://www.npmjs.com/package/@tsrx/prettier-plugin) -
   Prettier plugin for TSRX
 
