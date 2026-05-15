@@ -58,13 +58,6 @@ export function createDocumentSymbolPlugin() {
 					}
 
 					try {
-						if (parser === parseModule && !is_ripple_document(document.uri)) {
-							const { virtualCode } = getVirtualCode(document, context);
-							parser =
-								/** @type {{ parse?: typeof parseModule } | undefined} */ (virtualCode?.tsrx)
-									?.parse || parseModule;
-						}
-
 						const ast = parser(source, filename, { collect: true, loose: true });
 						const sourceDocument =
 							source === document.getText()
