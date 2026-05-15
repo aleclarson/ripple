@@ -281,11 +281,7 @@ function getInitializerChildSymbols(node, document) {
 	if (node.type === 'Component') {
 		return getChildSymbols(node, document);
 	}
-	if (
-		node.type === 'FunctionExpression' ||
-		node.type === 'ArrowFunctionExpression' ||
-		node.type === 'ObjectExpression'
-	) {
+	if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
 		return getChildSymbols(node, document);
 	}
 	return [];
