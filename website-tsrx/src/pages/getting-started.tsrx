@@ -47,17 +47,10 @@ const VUE_INSTALL_HTML = [
 const VUE_VITE_CONFIG_HTML = [
 	'<span class="ln">1</span> <span class="kw-export">import</span> <span class="br">{</span> <span class="prop">defineConfig</span> <span class="br">}</span> <span class="kw-export">from</span> <span class="str">\'vite\'</span>;',
 	'<span class="ln">2</span> <span class="kw-export">import</span> <span class="prop">tsrxVue</span> <span class="kw-export">from</span> <span class="str">\'@tsrx/vite-plugin-vue\'</span>;',
-	'<span class="ln">3</span> <span class="kw-export">import</span> <span class="prop">vueJsxVapor</span> <span class="kw-export">from</span> <span class="str">\'vue-jsx-vapor/vite\'</span>;',
-	'<span class="ln">4</span>',
-	'<span class="ln">5</span> <span class="kw-export">export default</span> <span class="fn">defineConfig</span><span class="br">(</span><span class="br">{</span>',
-	'<span class="ln">6</span>   <span class="prop">plugins</span>: <span class="br">[</span>',
-	'<span class="ln">7</span>     <span class="fn">tsrxVue</span><span class="br">(</span><span class="br">)</span>,',
-	'<span class="ln">8</span>     <span class="fn">vueJsxVapor</span><span class="br">(</span><span class="br">{</span>',
-	'<span class="ln">9</span>       <span class="prop">macros</span>: <span class="kw">true</span>,',
-	'<span class="ln">10</span>       <span class="prop">compiler</span>: <span class="br">{</span> <span class="prop">runtimeModuleName</span>: <span class="str">\'vue-jsx-vapor\'</span> <span class="br">}</span>,',
-	'<span class="ln">11</span>     <span class="br">}</span><span class="br">)</span>,',
-	'<span class="ln">12</span>   <span class="br">]</span>,',
-	'<span class="ln">13</span> <span class="br">}</span><span class="br">)</span>;',
+	'<span class="ln">3</span>',
+	'<span class="ln">4</span> <span class="kw-export">export default</span> <span class="fn">defineConfig</span><span class="br">(</span><span class="br">{</span>',
+	'<span class="ln">5</span>   <span class="prop">plugins</span>: <span class="br">[</span><span class="fn">tsrxVue</span><span class="br">(</span><span class="br">)</span><span class="br">]</span>,',
+	'<span class="ln">6</span> <span class="br">}</span><span class="br">)</span>;',
 ].join('\n');
 
 const REACT_RSPACK_INSTALL_HTML = [
@@ -304,16 +297,16 @@ export component GettingStartedPage() {
 					<a href="/features">"Features"</a>
 					<a href="/specification">"Specification"</a>
 					<a href="/playground">"Playground"</a>
-					<a
-						href="https://discord.gg/HCYpT5QHQR"
-						target="_blank"
-						rel="noopener noreferrer"
-					>"Discord"</a>
+					<a href="https://discord.gg/HCYpT5QHQR" target="_blank" rel="noopener noreferrer">
+						"Discord"
+					</a>
 					<a
 						href="https://github.com/Ripple-TS/ripple/tree/main/packages/tsrx"
 						target="_blank"
 						rel="noopener noreferrer"
-					>"GitHub"</a>
+					>
+						"GitHub"
+					</a>
 					<a href="/llms.txt" target="_blank" rel="noopener noreferrer">"llms.txt"</a>
 				</nav>
 			</header>
@@ -321,7 +314,8 @@ export component GettingStartedPage() {
 			<section class="hero">
 				<h1>"Getting Started"</h1>
 				<p class="lede">
-					"Set up TSRX with React, Preact, Solid, Vue, or Ripple and then wire in the editor tooling that makes "
+					"Set up TSRX with React, Preact, Solid, Vue, or Ripple and then wire in the editor tooling
+					that makes "
 					<code class="inline-code">".tsrx"</code>
 					" files feel native in the rest of your repo."
 				</p>
@@ -463,15 +457,16 @@ export component GettingStartedPage() {
 							<code class="inline-code">".tsrx"</code>
 							" files, hands the compiled output back to Next as TSX, and routes component-local "
 							<code class="inline-code">"<style>"</code>
-							" blocks through a sibling virtual CSS import so Turbopack can process the scoped styles without extra loader setup."
+							" blocks through a sibling virtual CSS import so Turbopack can process the scoped
+							styles without extra loader setup."
 						</p>
 					</section>
 
 					<section class="doc-section" id="react-bun">
 						<h2 class="section-heading">"React + Bun"</h2>
-						<p
-							class="section-body"
-						>"Install the compiler, the Bun plugin, and the React runtime:"</p>
+						<p class="section-body">
+							"Install the compiler, the Bun plugin, and the React runtime:"
+						</p>
 						<pre class="code-block">
 							<code>{html REACT_BUN_INSTALL_HTML}</code>
 						</pre>
@@ -487,7 +482,8 @@ export component GettingStartedPage() {
 							<code class="inline-code">"@tsrx/react"</code>
 							" and then hands the generated TSX to Bun's automatic JSX pipeline. Component-local "
 							<code class="inline-code">"<style>"</code>
-							" blocks are emitted as sibling virtual CSS modules, so Bun can bundle them without extra loader setup."
+							" blocks are emitted as sibling virtual CSS modules, so Bun can bundle them without
+							extra loader setup."
 						</p>
 					</section>
 
@@ -503,7 +499,8 @@ export component GettingStartedPage() {
 						</pre>
 						<p class="section-body">
 							<code class="inline-code">"@tsrx/bun-plugin-preact"</code>
-							" follows the same Bun integration shape as React, but targets Preact's automatic JSX runtime and supports overriding the default "
+							" follows the same Bun integration shape as React, but targets Preact's automatic JSX
+							runtime and supports overriding the default "
 							<code class="inline-code">"preact/compat"</code>
 							" Suspense import with "
 							<code class="inline-code">{'{ suspenseSource: "preact-suspense" }'}</code>
@@ -521,9 +518,9 @@ export component GettingStartedPage() {
 						<pre class="code-block">
 							<code>{html SOLID_INSTALL_HTML}</code>
 						</pre>
-						<p
-							class="section-body"
-						>"Then wire both plugins into your Vite config (order matters — tsrxSolid first):"</p>
+						<p class="section-body">
+							"Then wire both plugins into your Vite config (order matters — tsrxSolid first):"
+						</p>
 						<pre class="code-block">
 							<code>{html SOLID_VITE_CONFIG_HTML}</code>
 						</pre>
@@ -546,7 +543,8 @@ export component GettingStartedPage() {
 							<code class="inline-code">"@tsrx/solid"</code>
 							" and then chains "
 							<code class="inline-code">"babel-loader"</code>
-							" with Solid's Babel preset for the final JSX transform. In development mode it also enables "
+							" with Solid's Babel preset for the final JSX transform. In development mode it also
+							enables "
 							<code class="inline-code">"solid-refresh/babel"</code>
 							" automatically, while per-component "
 							<code class="inline-code">"<style>"</code>
@@ -578,15 +576,14 @@ export component GettingStartedPage() {
 
 					<section class="doc-section" id="vue-vite">
 						<h2 class="section-heading">"Vue + Vite"</h2>
-						<p
-							class="section-body"
-						>"Install the Vue compiler, its Vite plugin, the Vue runtime, and the Vapor JSX plugin:"</p>
+						<p class="section-body">
+							"Install the Vue compiler, its Vite plugin, the Vue runtime, and the Vapor JSX
+							plugin:"
+						</p>
 						<pre class="code-block">
 							<code>{html VUE_INSTALL_HTML}</code>
 						</pre>
-						<p
-							class="section-body"
-						>"Then wire both plugins into your Vite config (order matters — tsrxVue first):"</p>
+						<p class="section-body">"Then wire the Vue TSRX plugin into your Vite config:"</p>
 						<pre class="code-block">
 							<code>{html VUE_VITE_CONFIG_HTML}</code>
 						</pre>
@@ -594,9 +591,8 @@ export component GettingStartedPage() {
 							<code class="inline-code">"@tsrx/vite-plugin-vue"</code>
 							" compiles "
 							<code class="inline-code">".tsrx"</code>
-							" modules into Vue-flavoured TSX, and "
-							<code class="inline-code">"vue-jsx-vapor/vite"</code>
-							" performs the downstream Vapor JSX transform. For editor typechecking, set "
+							" modules and performs the downstream Vapor JSX transform. For editor typechecking,
+							set "
 							<code class="inline-code">{'jsxImportSource: "vue-jsx-vapor"'}</code>
 							" in your "
 							<code class="inline-code">"tsconfig.json"</code>
@@ -606,9 +602,9 @@ export component GettingStartedPage() {
 
 					<section class="doc-section" id="vue-rspack">
 						<h2 class="section-heading">"Vue + Rspack"</h2>
-						<p
-							class="section-body"
-						>"Install the Vue compiler, the Rspack plugin, the Vue runtime, and Vue Vapor JSX:"</p>
+						<p class="section-body">
+							"Install the Vue compiler, the Rspack plugin, the Vue runtime, and Vue Vapor JSX:"
+						</p>
 						<pre class="code-block">
 							<code>{html VUE_RSPACK_INSTALL_HTML}</code>
 						</pre>
@@ -622,7 +618,8 @@ export component GettingStartedPage() {
 							<code class="inline-code">".tsrx"</code>
 							" modules into Vue-flavoured TSX, runs the result through "
 							<code class="inline-code">"vue-jsx-vapor"</code>
-							" and then strips the remaining TypeScript syntax with Rspack's built-in SWC loader. Like the Vite setup, editor typechecking should set "
+							" and then strips the remaining TypeScript syntax with Rspack's built-in SWC loader.
+							Like the Vite setup, editor typechecking should set "
 							<code class="inline-code">{'jsxImportSource: "vue-jsx-vapor"'}</code>
 							" in your "
 							<code class="inline-code">"tsconfig.json"</code>
@@ -632,9 +629,9 @@ export component GettingStartedPage() {
 
 					<section class="doc-section" id="vue-bun">
 						<h2 class="section-heading">"Vue + Bun"</h2>
-						<p
-							class="section-body"
-						>"Install the Vue compiler, the Bun plugin, the Vue runtime, and Vue Vapor JSX:"</p>
+						<p class="section-body">
+							"Install the Vue compiler, the Bun plugin, the Vue runtime, and Vue Vapor JSX:"
+						</p>
 						<pre class="code-block">
 							<code>{html VUE_BUN_INSTALL_HTML}</code>
 						</pre>
@@ -650,7 +647,8 @@ export component GettingStartedPage() {
 							<code class="inline-code">"@tsrx/vue"</code>
 							" and performs the downstream "
 							<code class="inline-code">"vue-jsx-vapor"</code>
-							" transform inside the Bun plugin itself, so no extra Bun plugin setup is required. Like the Vite and Rspack Vue setups, editor typechecking should set "
+							" transform inside the Bun plugin itself, so no extra Bun plugin setup is required.
+							Like the Vite and Rspack Vue setups, editor typechecking should set "
 							<code class="inline-code">{'jsxImportSource: "vue-jsx-vapor"'}</code>
 							" in your "
 							<code class="inline-code">"tsconfig.json"</code>
@@ -661,7 +659,8 @@ export component GettingStartedPage() {
 					<section class="doc-section" id="ripple">
 						<h2 class="section-heading">"Ripple"</h2>
 						<p class="section-body">
-							"The Ripple framework ships with TSRX support as standard. If you're using Ripple with "
+							"The Ripple framework ships with TSRX support as standard. If you're using Ripple with
+							"
 							<code class="inline-code">"@ripple-ts/vite-plugin"</code>
 							", "
 							<code class="inline-code">".tsrx"</code>
@@ -675,7 +674,8 @@ export component GettingStartedPage() {
 						<p class="section-body">
 							"Once your compiler target is installed, add the editor tooling you actually want so "
 							<code class="inline-code">".tsrx"</code>
-							" files behave like first-class source files in the rest of your repo. Prettier and ESLint are separate paths here, so you can adopt one without committing to the other."
+							" files behave like first-class source files in the rest of your repo. Prettier and
+							ESLint are separate paths here, so you can adopt one without committing to the other."
 						</p>
 					</section>
 
@@ -741,9 +741,11 @@ export component GettingStartedPage() {
 						<pre class="code-block">
 							<code>{html TYPESCRIPT_PLUGIN_CONFIG_HTML}</code>
 						</pre>
-						<p
-							class="section-body"
-						>"The plugin turns TSRX into virtual TypeScript for diagnostics, navigation, completions, and type checking. If you already use the TSRX VS Code extension, this manual setup is optional because the extension runs the language tooling for you."</p>
+						<p class="section-body">
+							"The plugin turns TSRX into virtual TypeScript for diagnostics, navigation,
+							completions, and type checking. If you already use the TSRX VS Code extension, this
+							manual setup is optional because the extension runs the language tooling for you."
+						</p>
 						<h3 class="subsection-heading">"Command-line type checking"</h3>
 						<p class="section-body">
 							"The package also ships a "
@@ -783,38 +785,47 @@ export component GettingStartedPage() {
 								href="https://marketplace.visualstudio.com/items?itemName=Ripple-TS.ripple-ts-vscode-plugin"
 								target="_blank"
 								rel="noopener noreferrer"
-							>"TSRX for VS Code"</a>
-							" from the Visual Studio Code Marketplace for diagnostics, navigation, completions, and TypeScript-aware editor support. Pair it with the official Prettier extension if you want format-on-save support inside the editor."
+							>
+								"TSRX for VS Code"
+							</a>
+							" from the Visual Studio Code Marketplace for diagnostics, navigation, completions,
+							and TypeScript-aware editor support. Pair it with the official Prettier extension if
+							you want format-on-save support inside the editor."
 						</p>
 						<p class="section-body">
 							"After that, opening a "
 							<code class="inline-code">".tsrx"</code>
-							" file should give you syntax highlighting, diagnostics, go-to-definition, formatting, and the rest of the normal editor loop without extra manual setup."
+							" file should give you syntax highlighting, diagnostics, go-to-definition, formatting,
+							and the rest of the normal editor loop without extra manual setup."
 						</p>
 					</section>
 
 					<section class="doc-section" id="mcp">
 						<h2 class="section-heading">"MCP"</h2>
 						<p class="section-body">
-							"Use TSRX MCP when an AI coding tool supports Model Context Protocol. It gives agents current TSRX docs, target detection, project inspection, formatting, compilation, diagnostic advice, and read-only "
+							"Use TSRX MCP when an AI coding tool supports Model Context Protocol. It gives agents
+							current TSRX docs, target detection, project inspection, formatting, compilation,
+							diagnostic advice, and read-only "
 							<code class="inline-code">".tsrx"</code>
 							" file validation."
 						</p>
 						<h3 class="subsection-heading">"Hosted Endpoint"</h3>
-						<p
-							class="section-body"
-						>"For hosted MCP apps and connectors, use the public TSRX endpoint:"</p>
+						<p class="section-body">
+							"For hosted MCP apps and connectors, use the public TSRX endpoint:"
+						</p>
 						<p class="section-body">
 							<code class="inline-code">"https://mcp.tsrx.dev/mcp"</code>
 						</p>
-						<p
-							class="section-body"
-						>"This is the best starting point for ChatGPT web and other clients that connect to an HTTP MCP server instead of launching a local command."</p>
+						<p class="section-body">
+							"This is the best starting point for ChatGPT web and other clients that connect to an
+							HTTP MCP server instead of launching a local command."
+						</p>
 						<h3 class="subsection-heading">"ChatGPT"</h3>
 						<p class="section-body">
 							"Add "
 							<code class="inline-code">"https://mcp.tsrx.dev/mcp"</code>
-							" when creating a custom app or connector from ChatGPT developer mode, then select that app from the tools menu in a chat."
+							" when creating a custom app or connector from ChatGPT developer mode, then select
+							that app from the tools menu in a chat."
 						</p>
 						<h3 class="subsection-heading">"Self-hosting"</h3>
 						<p class="section-body">
@@ -872,7 +883,8 @@ export component GettingStartedPage() {
 						<p class="section-body">
 							"In an existing repo, start with "
 							<code class="inline-code">"inspect-project"</code>
-							" so the agent can detect the runtime target, installed TSRX packages, and likely project commands. For generated code, run "
+							" so the agent can detect the runtime target, installed TSRX packages, and likely
+							project commands. For generated code, run "
 							<code class="inline-code">"format-tsrx"</code>
 							", "
 							<code class="inline-code">"compile-tsrx"</code>
@@ -887,9 +899,10 @@ export component GettingStartedPage() {
 					<section class="doc-section" id="next">
 						<p class="section-kicker">"Next"</p>
 						<h2 class="section-heading">"What's next?"</h2>
-						<p
-							class="section-body"
-						>"Now that TSRX is set up, explore the language syntax — components, control flow, error boundaries, and more."</p>
+						<p class="section-body">
+							"Now that TSRX is set up, explore the language syntax — components, control flow,
+							error boundaries, and more."
+						</p>
 						<a class="cta-link" href="/features">"Explore the features →"</a>
 					</section>
 				</main>

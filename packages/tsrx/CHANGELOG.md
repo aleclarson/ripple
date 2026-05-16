@@ -1,5 +1,28 @@
 # @tsrx/core
 
+## 0.1.11
+
+### Patch Changes
+
+- [#1145](https://github.com/Ripple-TS/ripple/pull/1145)
+  [`0de733f`](https://github.com/Ripple-TS/ripple/commit/0de733f05800df5d3854eb69e012e9aeaf098f8a)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Add Vue Vapor support for
+  TSRX `try/pending` by lowering pending blocks to Vue Suspense slots.
+
+## 0.1.10
+
+### Patch Changes
+
+- [#1141](https://github.com/Ripple-TS/ripple/pull/1141)
+  [`8c064c8`](https://github.com/Ripple-TS/ripple/commit/8c064c888b60e4fcf88f6828e51792b3bba5797a)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Improve JSX event handler
+  typings to infer specific DOM event types. Improve all JSX types for much
+  improved typescript support. Mark self-closing JSX tokens as completion-capable
+  so empty attribute positions can surface editor completions. Fix no intellisense
+  on dom attributes when <style> blocks were present Share scoped CSS selector
+  metadata across TSRX targets so class-name definitions work outside Ripple too.
+  CMD+click now jumps to class definitions for all tsrx platforms.
+
 ## 0.1.9
 
 ### Patch Changes

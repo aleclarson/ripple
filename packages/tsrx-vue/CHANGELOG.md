@@ -1,5 +1,32 @@
 # @tsrx/vue
 
+## 0.1.11
+
+### Patch Changes
+
+- [#1145](https://github.com/Ripple-TS/ripple/pull/1145)
+  [`0de733f`](https://github.com/Ripple-TS/ripple/commit/0de733f05800df5d3854eb69e012e9aeaf098f8a)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Add Vue Vapor support for
+  TSRX `try/pending` by lowering pending blocks to Vue Suspense slots.
+
+- [#1145](https://github.com/Ripple-TS/ripple/pull/1145)
+  [`0de733f`](https://github.com/Ripple-TS/ripple/commit/0de733f05800df5d3854eb69e012e9aeaf098f8a)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Map Vue component
+  declarations to their generated component function in Volar TSX instead of the
+  `defineVaporComponent` wrapper.
+
+- Updated dependencies
+  [[`0de733f`](https://github.com/Ripple-TS/ripple/commit/0de733f05800df5d3854eb69e012e9aeaf098f8a)]:
+  - @tsrx/core@0.1.11
+
+## 0.1.10
+
+### Patch Changes
+
+- Updated dependencies
+  [[`8c064c8`](https://github.com/Ripple-TS/ripple/commit/8c064c888b60e4fcf88f6828e51792b3bba5797a)]:
+  - @tsrx/core@0.1.10
+
 ## 0.1.9
 
 ### Patch Changes
