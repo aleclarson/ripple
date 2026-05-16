@@ -1,6 +1,6 @@
 /** @import { LanguageServicePlugin } from '@volar/language-server' */
 /** @import { TextDocument } from 'vscode-languageserver-textdocument' */
-/** @import { DocumentSymbol, Range, SymbolKind as SymbolKindType } from '@volar/language-server' */
+/** @import { DocumentSymbol, Mapper, Range, SymbolKind as SymbolKindType } from '@volar/language-server' */
 
 import { getVirtualCode, is_ripple_document, createLogging } from './utils.js';
 import { parseModule } from '@tsrx/core';
@@ -44,9 +44,12 @@ export function createDocumentSymbolPlugin() {
 					let source = document.getText();
 					let filename = document.uri;
 					let parser = parseModule;
+					/** @type {Mapper | undefined} */
+					let sourceMap;
 
 					if (!is_ripple_document(document.uri)) {
-						const { virtualCode, sourceUri } = getVirtualCode(document, context);
+						const virtual = getVirtualCode(document, context);
+						const { virtualCode, sourceUri } = virtual;
 						if (!virtualCode || virtualCode.languageId !== 'ripple') {
 							log(`Skipping symbols in the '${virtualCode?.languageId}' context`);
 							return [];
@@ -55,6 +58,7 @@ export function createDocumentSymbolPlugin() {
 						filename = sourceUri.fsPath || sourceUri.path || filename;
 						parser =
 							/** @type {{ parse?: typeof parseModule }} */ (virtualCode.tsrx).parse || parseModule;
+						sourceMap = virtual.sourceMap;
 					}
 
 					try {
@@ -63,10 +67,13 @@ export function createDocumentSymbolPlugin() {
 							source === document.getText()
 								? document
 								: createDocumentLike(filename, source, document.languageId);
-						return collectDocumentSymbols(
+						const symbols = collectDocumentSymbols(
 							/** @type {SymbolNode} */ (/** @type {unknown} */ (ast)),
 							sourceDocument,
 						);
+						return sourceMap
+							? mapDocumentSymbolsToGenerated(symbols, sourceDocument, document, sourceMap)
+							: symbols;
 					} catch (error) {
 						logError('Failed to provide document symbols:', error);
 						return [];
@@ -81,7 +88,7 @@ export function createDocumentSymbolPlugin() {
  * @param {string} uri
  * @param {string} source
  * @param {string} languageId
- * @returns {Pick<TextDocument, 'positionAt' | 'getText' | 'languageId'>}
+ * @returns {Pick<TextDocument, 'positionAt' | 'offsetAt' | 'getText' | 'languageId'>}
  */
 function createDocumentLike(uri, source, languageId) {
 	/** @type {number[] | undefined} */
@@ -101,6 +108,11 @@ function createDocumentLike(uri, source, languageId) {
 	return {
 		languageId,
 		getText: () => source,
+		offsetAt(position) {
+			const offsets = getLineOffsets();
+			const line = Math.max(Math.min(position.line, offsets.length - 1), 0);
+			return Math.max(Math.min(offsets[line] + position.character, source.length), 0);
+		},
 		positionAt(offset) {
 			offset = Math.max(Math.min(offset, source.length), 0);
 			const offsets = getLineOffsets();
@@ -115,6 +127,78 @@ function createDocumentLike(uri, source, languageId) {
 			return { line, character: offset - offsets[line] };
 		},
 	};
+}
+
+/**
+ * @param {DocumentSymbol[]} symbols
+ * @param {Pick<TextDocument, 'offsetAt'>} sourceDocument
+ * @param {Pick<TextDocument, 'positionAt'>} generatedDocument
+ * @param {Mapper} sourceMap
+ * @returns {DocumentSymbol[]}
+ */
+function mapDocumentSymbolsToGenerated(symbols, sourceDocument, generatedDocument, sourceMap) {
+	/** @type {DocumentSymbol[]} */
+	const mapped = [];
+	for (const symbol of symbols) {
+		const generatedSelectionRange = sourceRangeToGeneratedRange(
+			symbol.selectionRange,
+			sourceDocument,
+			generatedDocument,
+			sourceMap,
+		);
+		if (!generatedSelectionRange) {
+			continue;
+		}
+		const generatedRange =
+			sourceRangeToGeneratedRange(symbol.range, sourceDocument, generatedDocument, sourceMap) ||
+			generatedSelectionRange;
+		mapped.push({
+			...symbol,
+			range: generatedRange,
+			selectionRange: generatedSelectionRange,
+			children: symbol.children
+				? mapDocumentSymbolsToGenerated(
+						symbol.children,
+						sourceDocument,
+						generatedDocument,
+						sourceMap,
+					)
+				: undefined,
+		});
+	}
+	return mapped;
+}
+
+/**
+ * @param {Range} range
+ * @param {Pick<TextDocument, 'offsetAt'>} sourceDocument
+ * @param {Pick<TextDocument, 'positionAt'>} generatedDocument
+ * @param {Mapper} sourceMap
+ * @returns {Range | null}
+ */
+function sourceRangeToGeneratedRange(range, sourceDocument, generatedDocument, sourceMap) {
+	const start = sourceDocument.offsetAt(range.start);
+	const end = sourceDocument.offsetAt(range.end);
+	for (const [generatedStart, generatedEnd] of sourceMap.toGeneratedRange(
+		start,
+		end,
+		true,
+		isSymbolMapping,
+	)) {
+		return {
+			start: generatedDocument.positionAt(generatedStart),
+			end: generatedDocument.positionAt(generatedEnd),
+		};
+	}
+	return null;
+}
+
+/**
+ * @param {{ structure?: unknown }} data
+ * @returns {boolean}
+ */
+function isSymbolMapping(data) {
+	return !!data.structure;
 }
 
 /**
