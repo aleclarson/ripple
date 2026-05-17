@@ -245,6 +245,38 @@ component App() {
 		expect(find_symbol(symbols, 'others')?.kind).toBe(SymbolKind.Variable);
 	});
 
+	it('keeps parent ranges wide enough to contain nested local symbols', async () => {
+		const source = `export component App() {
+	const test = 'hello';
+	let { start, loc } = /** @type {AST.NodeWithLocation} */ (node);
+	try {
+		<AsyncProfile />
+	} pending {
+		<p class="pending">{'Loading profile...'}</p>
+	} catch (err) {
+		<p class="error">{(err as Error).message}</p>
+	}
+}
+
+function helper() {
+	const inner = 1;
+	return inner;
+}
+`;
+
+		const { service, uri } = create_symbol_harness(source, 'breadcrumb-ranges.tsrx');
+		const symbols = await service.getDocumentSymbols(uri);
+		const app = find_symbol(symbols, 'App');
+		const helper = find_symbol(symbols, 'helper');
+
+		for (const name of ['test', 'start', 'loc']) {
+			const local = find_symbol(symbols, name);
+			expect(app && local && range_contains(app.range, local.selectionRange)).toBe(true);
+		}
+		const inner = find_symbol(symbols, 'inner');
+		expect(helper && inner && range_contains(helper.range, inner.selectionRange)).toBe(true);
+	});
+
 	it('returns child symbols from function, arrow, and component initializers', async () => {
 		const source = `const withFunction = function () {
 	const insideFunction = 1;
@@ -298,3 +330,21 @@ const withComponent = component Inner() {
 		expect(find_symbol(symbols, 'computed')?.kind).toBe(SymbolKind.Method);
 	});
 });
+
+/**
+ * @param {import('@volar/language-server').Range} outer
+ * @param {import('@volar/language-server').Range} inner
+ */
+function range_contains(outer, inner) {
+	return (
+		compare_position(outer.start, inner.start) <= 0 && compare_position(inner.end, outer.end) <= 0
+	);
+}
+
+/**
+ * @param {import('@volar/language-server').Position} a
+ * @param {import('@volar/language-server').Position} b
+ */
+function compare_position(a, b) {
+	return a.line === b.line ? a.character - b.character : a.line - b.line;
+}

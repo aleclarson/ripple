@@ -115,7 +115,8 @@ function mapDocumentSymbolsToGenerated(
 	let mapping = null;
 
 	for (const [symbol, { rangeNode, selectionNode }] of symbols) {
-		let generatedSelectionRange;
+		/** @type {Range | null} */
+		let generatedSelectionRange = null;
 		mapping = virtualCode.findMappingBySourceRange(
 			/** @type {AST.NodeWithLocation} */ (selectionNode).start,
 			/** @type {AST.NodeWithLocation} */ (selectionNode).end,
@@ -142,7 +143,18 @@ function mapDocumentSymbolsToGenerated(
 			continue;
 		}
 
-		let generatedRange;
+		const children = symbol.children
+			? mapDocumentSymbolsToGenerated(
+					symbol.children,
+					virtualCode,
+					sourceDocument,
+					generatedDocument,
+					sourceMap,
+				)
+			: undefined;
+
+		/** @type {Range | null} */
+		let generatedRange = null;
 
 		mapping = virtualCode.findMappingBySourceRange(
 			/** @type {AST.NodeWithLocation} */ (rangeNode).start,
@@ -159,27 +171,64 @@ function mapDocumentSymbolsToGenerated(
 		}
 
 		if (!generatedRange) {
-			generatedRange =
-				sourceRangeToGeneratedRange(symbol.range, sourceDocument, generatedDocument, sourceMap) ||
-				generatedSelectionRange;
+			generatedRange = sourceRangeToGeneratedRange(
+				symbol.range,
+				sourceDocument,
+				generatedDocument,
+				sourceMap,
+			);
+		}
+
+		if (!generatedRange) {
+			generatedRange = generatedSelectionRange;
+			if (children?.length) {
+				generatedRange = ensureRangeContainsChildren(generatedRange, children);
+			}
 		}
 
 		mapped.push({
 			...symbol,
 			range: generatedRange,
 			selectionRange: generatedSelectionRange,
-			children: symbol.children
-				? mapDocumentSymbolsToGenerated(
-						symbol.children,
-						virtualCode,
-						sourceDocument,
-						generatedDocument,
-						sourceMap,
-					)
-				: undefined,
+			children,
 		});
 	}
 	return mapped;
+}
+
+/**
+ * Breadcrumb providers expect parent symbol ranges to contain child symbol
+ * ranges. Full component/function bodies may not have one continuous source
+ * mapping after TSRX transforms, so widen the selection-range fallback around
+ * any mapped child declarations.
+ *
+ * @param {Range} range
+ * @param {DocumentSymbol[]} children
+ * @returns {Range}
+ */
+function ensureRangeContainsChildren(range, children) {
+	let start = range.start;
+	let end = range.end;
+
+	for (const child of children) {
+		if (comparePositions(child.range.start, start) < 0) {
+			start = child.range.start;
+		}
+		if (comparePositions(child.range.end, end) > 0) {
+			end = child.range.end;
+		}
+	}
+
+	return { start, end };
+}
+
+/**
+ * @param {Range['start']} a
+ * @param {Range['start']} b
+ * @returns {number}
+ */
+function comparePositions(a, b) {
+	return a.line === b.line ? a.character - b.character : a.line - b.line;
 }
 
 /**
