@@ -653,6 +653,9 @@ importers:
       '@types/estree':
         specifier: catalog:default
         version: 1.0.8
+      '@volar/language-core':
+        specifier: catalog:default
+        version: 2.4.28
       tsdown:
         specifier: catalog:default
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260512.1)(typescript@5.9.3)
@@ -680,12 +683,6 @@ importers:
       '@tsrx/ripple':
         specifier: workspace:*
         version: link:../tsrx-ripple
-      '@types/estree':
-        specifier: catalog:default
-        version: 1.0.8
-      '@types/estree-jsx':
-        specifier: catalog:default
-        version: 1.0.5
       clsx:
         specifier: catalog:default
         version: 2.1.1
@@ -695,25 +692,10 @@ importers:
       esm-env:
         specifier: catalog:default
         version: 1.2.2
-      ripple:
-        specifier: workspace:*
-        version: 'link:'
     devDependencies:
       '@types/node':
         specifier: catalog:default
         version: 24.11.0
-      '@typescript-eslint/types':
-        specifier: catalog:default
-        version: 8.56.1
-      '@volar/language-core':
-        specifier: catalog:default
-        version: 2.4.28
-      typescript:
-        specifier: catalog:default
-        version: 5.9.3
-      vscode-languageserver-types:
-        specifier: catalog:default
-        version: 3.17.5
 
   packages/rollup-plugin:
     dependencies:
