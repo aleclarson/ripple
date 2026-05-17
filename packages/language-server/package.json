@@ -31,8 +31,8 @@
     "vscode-uri": "catalog:default"
   },
   "devDependencies": {
-    "@tsrx/ripple": "workspace:*",
-    "tsdown": "catalog:default"
+    "tsdown": "catalog:default",
+    "@types/estree": "catalog:default"
   },
   "peerDependencies": {
     "typescript": "catalog:peer"

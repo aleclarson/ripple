@@ -1,7 +1,7 @@
-/** @import { CodeMapping } from '@tsrx/ripple' */
-/** @import {TSRXCompileError, VolarMappingsResult} from '@tsrx/ripple' */
+/** @import * as AST from 'estree'; */
+/** @import {CompileError, VolarMappingsResult, CodeMapping} from '@tsrx/core/types' */
 
-/** @typedef {{ code?: string, errors?: TSRXCompileError[] }} TSRXCompileResult */
+/** @typedef {{ code?: string, errors?: CompileError[] }} TSRXCompileResult */
 /** @typedef {{ compile?: (source: string, filename: string, options?: { loose?: boolean }) => TSRXCompileResult, compile_to_volar_mappings(source: string, filename: string, options?: { loose?: boolean }): VolarMappingsResult }} TSRXCompilerModule */
 
 /** @typedef {Map<string, CodeMapping>} CachedMappings */
@@ -160,9 +160,9 @@ export class TSRXVirtualCode {
 	embeddedCodes = [];
 	/** @type {CodeMapping[]} */
 	mappings = [];
-	/** @type {TSRXCompileError[]} */
+	/** @type {CompileError[]} */
 	fatalErrors = [];
-	/** @type {TSRXCompileError[]} */
+	/** @type {CompileError[]} */
 	usageErrors = [];
 	/** @type {IScriptSnapshot} */
 	snapshot;
@@ -170,6 +170,8 @@ export class TSRXVirtualCode {
 	sourceSnapshot;
 	/** @type {string} */
 	originalCode = '';
+	/** @type {AST.Program | null} */
+	sourceAst = null;
 	/** @type {unknown[]} */
 	diagnostics = [];
 	/** @type {CachedMappings | null} */
@@ -217,6 +219,7 @@ export class TSRXVirtualCode {
 
 		this.fatalErrors = [];
 		this.usageErrors = [];
+		this.sourceAst = null;
 
 		/** @type {VolarMappingsResult | undefined} */
 		let transpiled;
@@ -288,7 +291,7 @@ export class TSRXVirtualCode {
 				log('Compilation successful, generated code length:', transpiled?.code?.length || 0);
 			}
 		} catch (e) {
-			const error = /** @type {TSRXCompileError} */ (e);
+			const error = /** @type {CompileError} */ (e);
 			logError('Ripple compilation failed for', this.fileName, ':', error);
 			if (process.env.TSRX_TSC === 'true') {
 				logTSRXErrors(this.fileName, [error]);
@@ -303,6 +306,7 @@ export class TSRXVirtualCode {
 			this.generatedCode = transpiled.code;
 			this.mappings = transpiled.mappings ?? [];
 			this.usageErrors = transpiled.errors;
+			this.sourceAst = transpiled.sourceAst;
 
 			if (process.env.TSRX_TSC === 'true' && transpiled.errors.length > 0) {
 				logTSRXErrors(this.fileName, transpiled.errors);

@@ -650,9 +650,9 @@ importers:
         specifier: catalog:default
         version: 3.1.0
     devDependencies:
-      '@tsrx/ripple':
-        specifier: workspace:*
-        version: link:../tsrx-ripple
+      '@types/estree':
+        specifier: catalog:default
+        version: 1.0.8
       tsdown:
         specifier: catalog:default
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260512.1)(typescript@5.9.3)
@@ -1139,6 +1139,12 @@ importers:
         specifier: catalog:peer
         version: 5.9.3
     devDependencies:
+      '@tsrx/core':
+        specifier: workspace:*
+        version: link:../tsrx
+      '@types/estree':
+        specifier: catalog:default
+        version: 1.0.8
       '@types/node':
         specifier: catalog:default
         version: 24.11.0
@@ -1273,18 +1279,9 @@ importers:
       '@ripple-ts/language-server':
         specifier: workspace:*
         version: link:../language-server
-      '@tsrx/react':
-        specifier: workspace:*
-        version: link:../tsrx-react
-      '@tsrx/ripple':
-        specifier: workspace:*
-        version: link:../tsrx-ripple
       '@tsrx/typescript-plugin':
         specifier: workspace:*
         version: link:../typescript-plugin
-      '@types/vscode':
-        specifier: catalog:default
-        version: 1.116.0
       '@volar/language-core':
         specifier: catalog:default
         version: 2.4.28
@@ -1313,6 +1310,9 @@ importers:
       '@types/adm-zip':
         specifier: catalog:default
         version: 0.5.8
+      '@types/vscode':
+        specifier: catalog:default
+        version: 1.116.0
       '@vscode/vsce':
         specifier: catalog:default
         version: 3.9.1

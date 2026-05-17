@@ -345,7 +345,7 @@ function extract_classes(node, src_to_gen_map, gen_line_offsets, src_line_offset
  * @param {PostProcessingChanges } post_processing_changes - Optional post-processing changes
  * @param {number[]} line_offsets - Pre-computed line offsets array for generated code
  * @param {CompileError[]} [errors]
- * @returns {Omit<VolarMappingsResult, 'errors'>}
+ * @returns {Omit<VolarMappingsResult, 'errors' | 'sourceAst'>}
  */
 export function convert_source_map_to_mappings(
 	ast,
@@ -2402,6 +2402,7 @@ export function create_volar_mappings_result({
 
 	return {
 		...result,
+		sourceAst: ast_from_source,
 		errors,
 	};
 }

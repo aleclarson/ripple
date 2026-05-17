@@ -1,29 +1,34 @@
+/** @import * as AST from 'estree' */
 /** @import { LanguageServicePlugin } from '@volar/language-server' */
-/** @import { TextDocument } from 'vscode-languageserver-textdocument' */
 /** @import { DocumentSymbol, Mapper, Range, SymbolKind as SymbolKindType } from '@volar/language-server' */
+/** @import { TSRXVirtualCodeInstance } from '@tsrx/typescript-plugin/src/language.js'; */
+/** @import { CodeMapping } from '@tsrx/core/types'; */
 
 import { getVirtualCode, is_ripple_document, createLogging } from './utils.js';
-import { parseModule } from '@tsrx/core';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { SymbolKind } from '@volar/language-server';
 
-const { log, logError } = createLogging('[Ripple Document Symbol Plugin]');
+/**
+ * @typedef {AST.Node & {
+ * 	body?: AST.Node[] | { body?: AST.Node[] };
+ * }} NodeWithBody;
+ */
 
 /**
- * @typedef {{
- * 	type: string;
- * 	start?: number;
- * 	end?: number;
- * 	id?: SymbolNode | null;
- * 	key?: SymbolNode;
- * 	name?: string;
- * 	value?: unknown;
- * 	kind?: string;
- * 	declaration?: SymbolNode | null;
- * 	declarations?: Array<SymbolNode & { id: SymbolNode, init?: SymbolNode | null }>;
- * 	body?: SymbolNode[] | { body?: SymbolNode[] };
- * 	css?: { start?: number, end?: number } | null;
- * }} SymbolNode
+ * @typedef {AST.Node & {
+ * 	id?: AST.Identifier
+ * }} NodeWithId;
  */
+
+/**
+ * @typedef {[
+ * Omit<DocumentSymbol, 'children'> & { children: SymbolInfo[] }, {
+ * 	rangeNode: AST.Node;
+ * 	selectionNode: AST.Node;
+ * }]} SymbolInfo;
+ */
+
+const { log, logError } = createLogging('[Ripple Document Symbol Plugin]');
 
 /**
  * @returns {LanguageServicePlugin}
@@ -36,48 +41,34 @@ export function createDocumentSymbolPlugin() {
 		},
 		create(context) {
 			return {
-				/**
-				 * @param {TextDocument} document
-				 * @returns {Promise<DocumentSymbol[]>}
-				 */
 				async provideDocumentSymbols(document) {
-					let source = document.getText();
-					let filename = document.uri;
-					let parser = parseModule;
-					/** @type {Mapper | undefined} */
-					let sourceMap;
-
 					if (!is_ripple_document(document.uri)) {
-						const virtual = getVirtualCode(document, context);
-						const { virtualCode, sourceUri } = virtual;
-						if (!virtualCode || virtualCode.languageId !== 'ripple') {
-							log(`Skipping symbols in the '${virtualCode?.languageId}' context`);
-							return [];
-						}
-						source = virtualCode.originalCode;
-						filename = sourceUri.fsPath || sourceUri.path || filename;
-						parser =
-							/** @type {{ parse?: typeof parseModule }} */ (virtualCode.tsrx).parse || parseModule;
-						sourceMap = virtual.sourceMap;
-					}
-
-					try {
-						const ast = parser(source, filename, { collect: true, loose: true });
-						const sourceDocument =
-							source === document.getText()
-								? document
-								: createDocumentLike(filename, source, document.languageId);
-						const symbols = collectDocumentSymbols(
-							/** @type {SymbolNode} */ (/** @type {unknown} */ (ast)),
-							sourceDocument,
-						);
-						return sourceMap
-							? mapDocumentSymbolsToGenerated(symbols, sourceDocument, document, sourceMap)
-							: symbols;
-					} catch (error) {
-						logError('Failed to provide document symbols:', error);
+						// we're not processing any non-tsrx documents
 						return [];
 					}
+
+					const { virtualCode, sourceMap, sourceUri } = getVirtualCode(document, context);
+					const { sourceAst, languageId, originalCode } = virtualCode || {};
+
+					if (languageId !== 'ripple' || /* make ts happy */ !sourceMap || !sourceAst) {
+						log(`Skipping symbols in the '${languageId}' context`);
+						return [];
+					}
+
+					const sourceDocument = TextDocument.create(
+						sourceUri.toString(),
+						'ripple',
+						0,
+						originalCode,
+					);
+
+					return mapDocumentSymbolsToGenerated(
+						collectDocumentSymbols(sourceAst, sourceDocument),
+						virtualCode,
+						sourceDocument,
+						document,
+						sourceMap,
+					);
 				},
 			};
 		},
@@ -85,73 +76,75 @@ export function createDocumentSymbolPlugin() {
 }
 
 /**
- * @param {string} uri
- * @param {string} source
- * @param {string} languageId
- * @returns {Pick<TextDocument, 'positionAt' | 'offsetAt' | 'getText' | 'languageId'>}
- */
-function createDocumentLike(uri, source, languageId) {
-	/** @type {number[] | undefined} */
-	let lineOffsets;
-
-	function getLineOffsets() {
-		if (lineOffsets) return lineOffsets;
-		lineOffsets = [0];
-		for (let i = 0; i < source.length; i++) {
-			if (source.charCodeAt(i) === 10) {
-				lineOffsets.push(i + 1);
-			}
-		}
-		return lineOffsets;
-	}
-
-	return {
-		languageId,
-		getText: () => source,
-		offsetAt(position) {
-			const offsets = getLineOffsets();
-			const line = Math.max(Math.min(position.line, offsets.length - 1), 0);
-			return Math.max(Math.min(offsets[line] + position.character, source.length), 0);
-		},
-		positionAt(offset) {
-			offset = Math.max(Math.min(offset, source.length), 0);
-			const offsets = getLineOffsets();
-			let low = 0;
-			let high = offsets.length;
-			while (low < high) {
-				const mid = Math.floor((low + high) / 2);
-				if (offsets[mid] > offset) high = mid;
-				else low = mid + 1;
-			}
-			const line = low - 1;
-			return { line, character: offset - offsets[line] };
-		},
-	};
-}
-
-/**
- * @param {DocumentSymbol[]} symbols
- * @param {Pick<TextDocument, 'offsetAt'>} sourceDocument
- * @param {Pick<TextDocument, 'positionAt'>} generatedDocument
+ * @param {SymbolInfo[]} symbols
+ * @param {TSRXVirtualCodeInstance} virtualCode
+ * @param {TextDocument} sourceDocument
+ * @param {TextDocument} generatedDocument
  * @param {Mapper} sourceMap
  * @returns {DocumentSymbol[]}
  */
-function mapDocumentSymbolsToGenerated(symbols, sourceDocument, generatedDocument, sourceMap) {
+function mapDocumentSymbolsToGenerated(
+	symbols,
+	virtualCode,
+	sourceDocument,
+	generatedDocument,
+	sourceMap,
+) {
 	/** @type {DocumentSymbol[]} */
 	const mapped = [];
-	for (const symbol of symbols) {
-		const generatedSelectionRange = sourceRangeToGeneratedRange(
-			symbol.selectionRange,
-			sourceDocument,
-			generatedDocument,
-			sourceMap,
+	/** @type {CodeMapping | null} */
+	let mapping = null;
+
+	for (const [symbol, { rangeNode, selectionNode }] of symbols) {
+		let generatedSelectionRange;
+		mapping = virtualCode.findMappingBySourceRange(
+			/** @type {AST.NodeWithLocation} */ (selectionNode).start,
+			/** @type {AST.NodeWithLocation} */ (selectionNode).end,
 		);
+		if (mapping) {
+			generatedSelectionRange = {
+				start: generatedDocument.positionAt(mapping.generatedOffsets[0]),
+				end: generatedDocument.positionAt(
+					mapping.generatedOffsets[0] + mapping.generatedLengths[0],
+				),
+			};
+		}
+
+		if (!generatedSelectionRange) {
+			generatedSelectionRange = sourceRangeToGeneratedRange(
+				symbol.selectionRange,
+				sourceDocument,
+				generatedDocument,
+				sourceMap,
+			);
+		}
+
 		if (!generatedSelectionRange) {
 			continue;
 		}
-		const generatedRange =
-			sourceRangeToGeneratedRange(symbol.range, sourceDocument, generatedDocument, sourceMap) ||
-			generatedSelectionRange;
+
+		let generatedRange;
+
+		mapping = virtualCode.findMappingBySourceRange(
+			/** @type {AST.NodeWithLocation} */ (rangeNode).start,
+			/** @type {AST.NodeWithLocation} */ (rangeNode).end,
+		);
+
+		if (mapping) {
+			generatedRange = {
+				start: generatedDocument.positionAt(mapping.generatedOffsets[0]),
+				end: generatedDocument.positionAt(
+					mapping.generatedOffsets[0] + mapping.generatedLengths[0],
+				),
+			};
+		}
+
+		if (!generatedRange) {
+			generatedRange =
+				sourceRangeToGeneratedRange(symbol.range, sourceDocument, generatedDocument, sourceMap) ||
+				generatedSelectionRange;
+		}
+
 		mapped.push({
 			...symbol,
 			range: generatedRange,
@@ -159,6 +152,7 @@ function mapDocumentSymbolsToGenerated(symbols, sourceDocument, generatedDocumen
 			children: symbol.children
 				? mapDocumentSymbolsToGenerated(
 						symbol.children,
+						virtualCode,
 						sourceDocument,
 						generatedDocument,
 						sourceMap,
@@ -171,8 +165,8 @@ function mapDocumentSymbolsToGenerated(symbols, sourceDocument, generatedDocumen
 
 /**
  * @param {Range} range
- * @param {Pick<TextDocument, 'offsetAt'>} sourceDocument
- * @param {Pick<TextDocument, 'positionAt'>} generatedDocument
+ * @param {TextDocument} sourceDocument
+ * @param {TextDocument} generatedDocument
  * @param {Mapper} sourceMap
  * @returns {Range | null}
  */
@@ -202,9 +196,9 @@ function isSymbolMapping(data) {
 }
 
 /**
- * @param {SymbolNode} ast
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @returns {DocumentSymbol[]}
+ * @param {AST.Program} ast
+ * @param {TextDocument} document
+ * @returns {SymbolInfo[]}
  */
 export function collectDocumentSymbols(ast, document) {
 	const body = Array.isArray(ast.body) ? ast.body : [];
@@ -212,12 +206,12 @@ export function collectDocumentSymbols(ast, document) {
 }
 
 /**
- * @param {SymbolNode[]} statements
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @returns {DocumentSymbol[]}
+ * @param {AST.Node[]} statements
+ * @param {TextDocument} document
+ * @returns {SymbolInfo[]}
  */
 function collectSymbolsFromStatements(statements, document) {
-	/** @type {DocumentSymbol[]} */
+	/** @type {SymbolInfo[]} */
 	const symbols = [];
 
 	for (const statement of statements) {
@@ -227,14 +221,21 @@ function collectSymbolsFromStatements(statements, document) {
 			statement.type === 'ExportDefaultDeclaration'
 		) {
 			if (statement.declaration) {
-				symbols.push(...collectSymbolsFromStatements([statement.declaration], document));
+				symbols.push(
+					...collectSymbolsFromStatements(
+						[/** @type {AST.Declaration} */ (statement.declaration)],
+						document,
+					),
+				);
 			}
 			continue;
 		}
 
 		const symbol = createSymbolForDeclaration(statement, document);
 		if (symbol) {
-			symbols.push(symbol);
+			symbols.push(...symbol);
+		} else {
+			symbols.push(...getChildSymbols(statement, document));
 		}
 	}
 
@@ -242,124 +243,74 @@ function collectSymbolsFromStatements(statements, document) {
 }
 
 /**
- * @param {SymbolNode} node
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @returns {DocumentSymbol | null}
+ * @param {AST.Node} node
+ * @param {TextDocument} document
+ * @returns { SymbolInfo[]}
  */
 function createSymbolForDeclaration(node, document) {
+	const id = /** @type {NodeWithId} */ (node).id;
+	const name = id ? getIdentifierName(id) : null;
+
 	switch (node.type) {
 		case 'Component':
-			return createNamedNodeSymbol(
-				getIdentifierName(node.id) || 'default',
-				SymbolKind.Function,
-				node,
-				node.id || node,
-				document,
-				getChildSymbols(node, document),
-			);
+		case 'FunctionDeclaration': {
+			const children = getChildSymbols(node, document);
+			if (!id || !name) {
+				return children;
+			}
 
-		case 'FunctionDeclaration':
-			if (!node.id) return null;
-			return createNamedNodeSymbol(
-				getIdentifierName(node.id) || 'default',
-				SymbolKind.Function,
-				node,
-				node.id,
-				document,
-				getChildSymbols(node, document),
-			);
+			return [createNamedNodeSymbol(name, SymbolKind.Function, node, id, document, children)];
+		}
+		case 'ClassDeclaration': {
+			return getClassChildSymbols(node, document);
+		}
+		case 'VariableDeclaration': {
+			return createVariableDeclarationSymbols(node, document);
+		}
+		case 'TSInterfaceDeclaration': {
+			if (!id || !name) {
+				return [];
+			}
 
-		case 'ClassDeclaration':
-			if (!node.id) return null;
-			return createNamedNodeSymbol(
-				getIdentifierName(node.id) || 'default',
-				SymbolKind.Class,
-				node,
-				node.id,
-				document,
-				getClassChildSymbols(node, document),
-			);
+			return [createNamedNodeSymbol(name, SymbolKind.Interface, node, id, document)];
+		}
+		case 'TSTypeAliasDeclaration': {
+			if (!id || !name) {
+				return [];
+			}
 
-		case 'VariableDeclaration':
-			return createVariableDeclarationSymbol(node, document);
-
-		case 'TSInterfaceDeclaration':
-			if (!node.id) return null;
-			return createNamedNodeSymbol(
-				getIdentifierName(node.id) || 'interface',
-				SymbolKind.Interface,
-				node,
-				node.id,
-				document,
-			);
-
-		case 'TSTypeAliasDeclaration':
-			if (!node.id) return null;
-			return createNamedNodeSymbol(
-				getIdentifierName(node.id) || 'type',
-				SymbolKind.TypeParameter,
-				node,
-				node.id,
-				document,
-			);
-
-		default:
-			return null;
+			return [createNamedNodeSymbol(name, SymbolKind.TypeParameter, node, id, document)];
+		}
+		default: {
+			return [];
+		}
 	}
 }
 
 /**
- * @param {SymbolNode} node
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @returns {DocumentSymbol | null}
+ * @param {AST.VariableDeclaration} node
+ * @param {TextDocument} document
+ * @returns {SymbolInfo[]}
  */
-function createVariableDeclarationSymbol(node, document) {
-	const declarations = node.declarations || [];
-	const namedDeclarations = declarations.filter(
-		(declaration) => declaration.id.type === 'Identifier',
-	);
-
-	if (namedDeclarations.length === 0) {
-		return null;
-	}
-
-	if (namedDeclarations.length === 1) {
-		const declaration = namedDeclarations[0];
-		const id = declaration.id;
-		return createNamedNodeSymbol(
-			getIdentifierName(id) || 'declaration',
-			node.kind === 'const' ? SymbolKind.Constant : SymbolKind.Variable,
-			node,
-			id,
-			document,
-			declaration.init ? getInitializerChildSymbols(declaration.init, document) : [],
-		);
-	}
-
-	return createNamedNodeSymbol(
-		`${node.kind || 'var'} declarations`,
-		node.kind === 'const' ? SymbolKind.Constant : SymbolKind.Variable,
-		node,
-		namedDeclarations[0].id,
-		document,
-		namedDeclarations.map((declaration) => {
-			const id = declaration.id;
-			return createNamedNodeSymbol(
-				getIdentifierName(id) || 'declaration',
+function createVariableDeclarationSymbols(node, document) {
+	return node.declarations
+		.filter((declaration) => declaration.id.type === 'Identifier')
+		.map((declaration) =>
+			createNamedNodeSymbol(
+				/** @type {AST.Identifier} */ (declaration.id).name,
 				node.kind === 'const' ? SymbolKind.Constant : SymbolKind.Variable,
-				/** @type {SymbolNode} */ (/** @type {unknown} */ (declaration)),
-				id,
+				declaration,
+				declaration.id,
 				document,
 				declaration.init ? getInitializerChildSymbols(declaration.init, document) : [],
-			);
-		}),
-	);
+			),
+		);
 }
 
 /**
- * @param {SymbolNode} node
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @returns {DocumentSymbol[]}
+ * @param {AST.Node} node
+ * @param {TextDocument} document
+ * @returns {SymbolInfo[]}
  */
 function getInitializerChildSymbols(node, document) {
 	if (node.type === 'Component') {
@@ -372,33 +323,38 @@ function getInitializerChildSymbols(node, document) {
 }
 
 /**
- * @param {SymbolNode} node
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @returns {DocumentSymbol[]}
+ * @param {AST.Node | NodeWithBody} node
+ * @param {TextDocument} document
+ * @returns {SymbolInfo[]}
  */
 function getChildSymbols(node, document) {
-	if (Array.isArray(node.body)) {
-		return collectSymbolsFromStatements(node.body, document);
-	}
-	if (node.body && !Array.isArray(node.body) && Array.isArray(node.body.body)) {
-		return collectSymbolsFromStatements(node.body.body, document);
+	const body = /** @type {NodeWithBody} */ (node).body;
+	if (Array.isArray(body)) {
+		return collectSymbolsFromStatements(body, document);
+	} else if (Array.isArray(body?.body)) {
+		return collectSymbolsFromStatements(body.body, document);
 	}
 	return [];
 }
 
 /**
- * @param {SymbolNode} node
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @returns {DocumentSymbol[]}
+ * @param {AST.ClassDeclaration} node
+ * @param {TextDocument} document
+ * @returns {SymbolInfo[]}
  */
 function getClassChildSymbols(node, document) {
 	const body = !Array.isArray(node.body) && node.body?.body ? node.body.body : [];
-	/** @type {DocumentSymbol[]} */
+	/** @type {SymbolInfo[]} */
 	const symbols = [];
 
 	for (const member of body) {
+		if (member.type !== 'MethodDefinition' && member.type !== 'PropertyDefinition') {
+			continue;
+		}
 		const name = getPropertyName(member.key);
-		if (!name) continue;
+		if (!name) {
+			continue;
+		}
 		symbols.push(
 			createNamedNodeSymbol(
 				name,
@@ -414,18 +370,24 @@ function getClassChildSymbols(node, document) {
 }
 
 /**
- * @param {SymbolNode | undefined | null} node
+ * @param {AST.Node | undefined | null} node
  * @returns {string | null}
  */
 function getPropertyName(node) {
-	if (!node) return null;
-	if (node.type === 'Identifier') return node.name || null;
-	if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
+	if (!node) {
+		return null;
+	}
+	if (node.type === 'Identifier') {
+		return node.name || null;
+	}
+	if (node.type === 'Literal' && typeof node.value === 'string') {
+		return node.value;
+	}
 	return null;
 }
 
 /**
- * @param {SymbolNode | null | undefined} node
+ * @param {AST.Identifier | null | undefined } node
  * @returns {string | null}
  */
 function getIdentifierName(node) {
@@ -435,32 +397,53 @@ function getIdentifierName(node) {
 /**
  * @param {string} name
  * @param {SymbolKindType} kind
- * @param {SymbolNode} rangeNode
- * @param {SymbolNode} selectionNode
- * @param {Pick<TextDocument, 'positionAt'>} document
- * @param {DocumentSymbol[]} [children]
- * @returns {DocumentSymbol}
+ * @param {AST.Node} rangeNode
+ * @param {AST.Node} selectionNode
+ * @param {TextDocument} document
+ * @param {SymbolInfo[]} [children]
+ * @returns {SymbolInfo}
  */
 function createNamedNodeSymbol(name, kind, rangeNode, selectionNode, document, children = []) {
-	return {
-		name,
-		kind,
-		range: createRange(rangeNode, document),
-		selectionRange: createRange(/** @type {SymbolNode} */ (selectionNode), document),
-		children,
-	};
+	const adjustedSelectionNode = adjustNodeEnd(selectionNode);
+	return [
+		{
+			name,
+			kind,
+			range: createRange(rangeNode, document),
+			selectionRange: createRange(adjustedSelectionNode, document),
+			children,
+		},
+		{ rangeNode, selectionNode: adjustedSelectionNode },
+	];
 }
 
 /**
- * @param {SymbolNode} node
- * @param {Pick<TextDocument, 'positionAt'>} document
+ * @param {AST.Node} node
+ * @param {TextDocument} document
  * @returns {Range}
  */
 function createRange(node, document) {
-	const start = typeof node.start === 'number' ? node.start : 0;
-	const end = typeof node.end === 'number' ? node.end : start;
+	const start = /** @type {AST.NodeWithLocation} */ (node).start;
+	const end =
+		node.type === 'Identifier' && typeof node.name === 'string'
+			? start + node.name.length
+			: /** @type {AST.NodeWithLocation} */ (node).end;
 	return {
 		start: document.positionAt(start),
 		end: document.positionAt(end),
 	};
+}
+
+/**
+ * @param {AST.Node} node
+ * @returns {AST.Node}
+ */
+function adjustNodeEnd(node) {
+	if (node.type === 'Identifier' && typeof node.name === 'string') {
+		return {
+			...node,
+			end: /** @type {AST.NodeWithLocation} */ (node).start + node.name.length,
+		};
+	}
+	return node;
 }
