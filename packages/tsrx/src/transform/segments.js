@@ -1528,6 +1528,18 @@ export function convert_source_map_to_mappings(
 				}
 				return;
 			} else if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') {
+				if (node.loc) {
+					tokens.push({
+						source: 'class',
+						generated: 'class',
+						loc: {
+							start: { line: node.loc.start.line, column: node.loc.start.column },
+							end: { line: node.loc.start.line, column: node.loc.start.column + 'class'.length },
+						},
+						metadata: {},
+					});
+				}
+
 				// Visit in source order: id, superClass, body
 				if (node.id) {
 					visit(node.id);

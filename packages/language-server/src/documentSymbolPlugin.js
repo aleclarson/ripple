@@ -8,6 +8,7 @@
 import { getVirtualCode, is_ripple_document, createLogging } from './utils.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { SymbolKind } from '@volar/language-server';
+import { builders as b } from '@tsrx/core';
 
 /**
  * @typedef {AST.Node & {
@@ -266,31 +267,37 @@ function collectSymbolsFromStatements(statements, document) {
  * @returns { SymbolInfo[]}
  */
 function createSymbolForDeclaration(node, document, fallbackName) {
-	const id = /** @type {NodeWithId} */ (node).id;
-	const name = (id ? getIdentifierName(id) : null) ?? fallbackName ?? null;
-	const selectionNode = id ?? node;
+	const type = node.type;
+	let id = /** @type {NodeWithId} */ (node).id ?? null;
+	let name = id ? getIdentifierName(id) : null;
 
-	switch (node.type) {
+	switch (type) {
 		case 'Component':
 		case 'FunctionDeclaration': {
 			const children = getChildSymbols(node, document);
-			if (!name) {
-				return children;
+			if (!id || !name) {
+				if (fallbackName) {
+					name = fallbackName;
+					id = createFallbackIdentifierNode(node, type === 'Component' ? 'component' : 'function');
+				} else {
+					return children;
+				}
 			}
 
-			return [
-				createNamedNodeSymbol(name, SymbolKind.Function, node, selectionNode, document, children),
-			];
+			return [createNamedNodeSymbol(name, SymbolKind.Function, node, id, document, children)];
 		}
 		case 'ClassDeclaration': {
 			const children = getClassChildSymbols(node, document);
-			if (!name) {
-				return children;
+			if (!id || !name) {
+				if (fallbackName) {
+					name = fallbackName;
+					id = createFallbackIdentifierNode(node, 'class');
+				} else {
+					return children;
+				}
 			}
 
-			return [
-				createNamedNodeSymbol(name, SymbolKind.Class, node, selectionNode, document, children),
-			];
+			return [createNamedNodeSymbol(name, SymbolKind.Class, node, id, document, children)];
 		}
 		case 'VariableDeclaration': {
 			return createVariableDeclarationSymbols(node, document);
@@ -485,6 +492,20 @@ function getPropertyName(node) {
  */
 function getIdentifierName(node) {
 	return node?.name || null;
+}
+
+/**
+ * @param {AST.Node} node
+ * @param {string} keyword
+ * @returns {AST.Identifier}
+ */
+function createFallbackIdentifierNode(node, keyword) {
+	let { start, loc } = /** @type {AST.NodeWithLocation} */ (node);
+	loc = {
+		start: { ...loc.start },
+		end: { line: loc.start.line, column: loc.start.column + keyword.length },
+	};
+	return b.id(keyword, { start, end: start + keyword.length, loc });
 }
 
 /**

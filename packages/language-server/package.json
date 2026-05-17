@@ -33,7 +33,8 @@
   "devDependencies": {
     "tsdown": "catalog:default",
     "@types/estree": "catalog:default",
-    "@volar/language-core": "catalog:default"
+    "@volar/language-core": "catalog:default",
+    "@volar/language-service": "catalog:default"
   },
   "peerDependencies": {
     "typescript": "catalog:peer"

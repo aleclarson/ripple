@@ -87,6 +87,9 @@ catalogs:
     '@volar/language-server':
       specifier: ~2.4.28
       version: 2.4.28
+    '@volar/language-service':
+      specifier: ~2.4.28
+      version: 2.4.28
     '@volar/typescript':
       specifier: ~2.4.28
       version: 2.4.28
@@ -654,6 +657,9 @@ importers:
         specifier: catalog:default
         version: 1.0.8
       '@volar/language-core':
+        specifier: catalog:default
+        version: 2.4.28
+      '@volar/language-service':
         specifier: catalog:default
         version: 2.4.28
       tsdown:
