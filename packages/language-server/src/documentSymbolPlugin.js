@@ -215,7 +215,10 @@ function collectSymbolsFromStatements(statements, document) {
 	const symbols = [];
 
 	for (const statement of statements) {
-		if (!statement) continue;
+		if (!statement) {
+			continue;
+		}
+
 		if (
 			statement.type === 'ExportNamedDeclaration' ||
 			statement.type === 'ExportDefaultDeclaration'
@@ -231,12 +234,7 @@ function collectSymbolsFromStatements(statements, document) {
 			continue;
 		}
 
-		const symbol = createSymbolForDeclaration(statement, document);
-		if (symbol) {
-			symbols.push(...symbol);
-		} else {
-			symbols.push(...getChildSymbols(statement, document));
-		}
+		symbols.push(...createSymbolForDeclaration(statement, document));
 	}
 
 	return symbols;
@@ -262,7 +260,12 @@ function createSymbolForDeclaration(node, document) {
 			return [createNamedNodeSymbol(name, SymbolKind.Function, node, id, document, children)];
 		}
 		case 'ClassDeclaration': {
-			return getClassChildSymbols(node, document);
+			const children = getClassChildSymbols(node, document);
+			if (!id || !name) {
+				return children;
+			}
+
+			return [createNamedNodeSymbol(name, SymbolKind.Class, node, id, document, children)];
 		}
 		case 'VariableDeclaration': {
 			return createVariableDeclarationSymbols(node, document);
@@ -313,12 +316,14 @@ function createVariableDeclarationSymbols(node, document) {
  * @returns {SymbolInfo[]}
  */
 function getInitializerChildSymbols(node, document) {
-	if (node.type === 'Component') {
+	if (
+		node.type === 'Component' ||
+		node.type === 'FunctionExpression' ||
+		node.type === 'ArrowFunctionExpression'
+	) {
 		return getChildSymbols(node, document);
 	}
-	if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-		return getChildSymbols(node, document);
-	}
+
 	return [];
 }
 
