@@ -279,6 +279,7 @@ function createSymbolForDeclaration(node, document, fallbackName) {
 			return createVariableDeclarationSymbols(node, document);
 		}
 		case 'TSInterfaceDeclaration': {
+			// default export cannot be unnamed
 			if (!id || !name) {
 				return [];
 			}
@@ -286,6 +287,7 @@ function createSymbolForDeclaration(node, document, fallbackName) {
 			return [createNamedNodeSymbol(name, SymbolKind.Interface, node, id, document)];
 		}
 		case 'TSTypeAliasDeclaration': {
+			// default export cannot be unnamed
 			if (!id || !name) {
 				return [];
 			}
