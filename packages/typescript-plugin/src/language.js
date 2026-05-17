@@ -172,6 +172,8 @@ export class TSRXVirtualCode {
 	originalCode = '';
 	/** @type {AST.Program | null} */
 	sourceAst = null;
+	/** @type {boolean} */
+	isDotCompletionMode = false;
 	/** @type {unknown[]} */
 	diagnostics = [];
 	/** @type {CachedMappings | null} */
@@ -220,6 +222,7 @@ export class TSRXVirtualCode {
 		this.fatalErrors = [];
 		this.usageErrors = [];
 		this.sourceAst = null;
+		this.isDotCompletionMode = false;
 
 		/** @type {VolarMappingsResult | undefined} */
 		let transpiled;
@@ -264,6 +267,7 @@ export class TSRXVirtualCode {
 			// If user typed a ".", compile without it and then stitch it back into
 			// the generated output so completions can still resolve.
 			if (isDotTyped && dotPosition >= 0) {
+				this.isDotCompletionMode = true;
 				const codeWithoutDot =
 					newCode.substring(0, dotPosition) + newCode.substring(dotPosition + 1);
 

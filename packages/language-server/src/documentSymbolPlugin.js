@@ -30,6 +30,8 @@ import { SymbolKind } from '@volar/language-server';
  */
 
 const { log, logError } = createLogging('[Ripple Document Symbol Plugin]');
+/** @type {Map<string, DocumentSymbol[]>} */
+const documentSymbolCache = new Map();
 
 /**
  * @returns {LanguageServicePlugin}
@@ -51,8 +53,21 @@ export function createDocumentSymbolPlugin() {
 					const { virtualCode, sourceMap, sourceUri } = getVirtualCode(document, context);
 					const { sourceAst, languageId, originalCode } = virtualCode || {};
 
-					if (languageId !== 'ripple' || /* make ts happy */ !sourceMap || !sourceAst) {
+					if (languageId !== 'ripple') {
 						log(`Skipping symbols in the '${languageId}' context`);
+						return [];
+					}
+
+					const cacheKey = sourceUri.toString();
+					const cachedSymbols = documentSymbolCache.get(cacheKey) ?? [];
+
+					if (virtualCode?.fatalErrors?.length || virtualCode?.isDotCompletionMode) {
+						return cachedSymbols;
+					}
+
+					// Successful virtual code should have both, but Volar's
+					// map lookup and the virtual code type still expose them as optional.
+					if (!sourceMap || !sourceAst) {
 						return [];
 					}
 
@@ -63,13 +78,15 @@ export function createDocumentSymbolPlugin() {
 						originalCode,
 					);
 
-					return mapDocumentSymbolsToGenerated(
+					const symbols = mapDocumentSymbolsToGenerated(
 						collectDocumentSymbols(sourceAst, sourceDocument),
 						virtualCode,
 						sourceDocument,
 						document,
 						sourceMap,
 					);
+					documentSymbolCache.set(cacheKey, symbols);
+					return symbols;
 				},
 			};
 		},
