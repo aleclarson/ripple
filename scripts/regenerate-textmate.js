@@ -21,7 +21,7 @@ function writeTargets(targets, sourcePath) {
 const __filename = fileURLToPath(import.meta.url);
 const rootDir = path.join(path.dirname(__filename), '..');
 
-const sourceJson = path.join(rootDir, 'grammars/textmate/ripple.tmLanguage.json');
+const sourceJson = path.join(rootDir, 'grammars/textmate/tsrx.tmLanguage.json');
 const sourcePlist = path.join(rootDir, 'grammars/textmate/info.plist');
 const assetBundleGrammar = path.join(rootDir, 'assets/Ripple.tmbundle/Syntaxes/ripple.tmLanguage');
 

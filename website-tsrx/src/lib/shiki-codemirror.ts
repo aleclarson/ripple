@@ -7,7 +7,7 @@ import {
 } from '@codemirror/view';
 import { type Extension, StateEffect, StateField } from '@codemirror/state';
 import { createHighlighter, type ThemedToken, type Highlighter } from 'shiki';
-import ripple_grammar from '../../../grammars/textmate/ripple.tmLanguage.json';
+import ripple_grammar from '../../../grammars/textmate/tsrx.tmLanguage.json';
 
 const modified_grammar = {
 	...ripple_grammar,

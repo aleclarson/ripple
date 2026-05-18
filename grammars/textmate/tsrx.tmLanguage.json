@@ -6526,7 +6526,7 @@
               "name": "punctuation.section.embedded.end.ripple-ts"
             }
           },
-          "contentName": "source.js.embedded.ripple-isolated",
+          "contentName": "source.js.embedded.tsrx-isolated",
           "patterns": [
             {
               "include": "#component-statements"
@@ -6586,7 +6586,7 @@
       ]
     },
     "jsx-evaluated-code": {
-      "contentName": "meta.embedded.expression.js source.js.embedded.ripple",
+      "contentName": "meta.embedded.expression.js source.js.embedded.tsrx",
       "begin": "\\{",
       "end": "\\}",
       "beginCaptures": {
@@ -7078,7 +7078,7 @@
       ]
     },
     "jsx-tsx-evaluated-code": {
-      "contentName": "meta.embedded.expression.js source.js.embedded.ripple",
+      "contentName": "meta.embedded.expression.js source.js.embedded.tsrx",
       "begin": "\\{",
       "end": "\\}",
       "beginCaptures": {

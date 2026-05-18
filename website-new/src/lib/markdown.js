@@ -1,8 +1,8 @@
 import { Marked } from 'marked';
 import { createHighlighter } from 'shiki';
 
-// Import the Ripple TextMate grammar directly (bundled by Vite at build time)
-import ripple_grammar from '../../../grammars/textmate/ripple.tmLanguage.json';
+// Import the TSRX TextMate grammar directly (bundled by Vite at build time)
+import ripple_grammar from '../../../grammars/textmate/tsrx.tmLanguage.json';
 
 /**
  * Escape HTML special characters.
