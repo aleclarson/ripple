@@ -62,15 +62,14 @@ export function tsrxReact(options = {}) {
 		async transform(/** @type {string} */ code, /** @type {string} */ id) {
 			if (!TSRX_EXTENSION_PATTERN.test(id)) return null;
 
-			const { code: tsx_code, css, map } = compile(code, id);
+			let { code: tsx_code, css, map } = compile(code, id);
 
 			let source = tsx_code;
-			let input_map = /** @type {any} */ (map);
 			if (css) {
 				css_cache.set(id, css);
 				source = `import ${JSON.stringify(id + CSS_QUERY)};\n${tsx_code}`;
-				if (input_map && typeof input_map.mappings === 'string') {
-					input_map = { ...input_map, mappings: ';' + input_map.mappings };
+				if (map && typeof map.mappings === 'string') {
+					map = { ...map, mappings: ';' + map.mappings };
 				}
 			} else {
 				css_cache.delete(id);
@@ -88,7 +87,7 @@ export function tsrxReact(options = {}) {
 					},
 					target: 'esnext',
 				},
-				input_map,
+				map,
 			);
 
 			return { code: result.code, map: result.map };
