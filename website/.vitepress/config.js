@@ -3,7 +3,7 @@ import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs';
 import { npmCommandsMarkdownPlugin } from 'vitepress-plugin-npm-commands';
 /** @import { DefaultTheme } from 'vitepress'; */
 
-import rippleGrammar from '../../grammars/textmate/ripple.tmLanguage.json';
+import rippleGrammar from '../../grammars/textmate/tsrx.tmLanguage.json';
 const modifiedGrammar = {
 	...rippleGrammar,
 	embeddedLangs: ['jsx', 'tsx', 'css'],
