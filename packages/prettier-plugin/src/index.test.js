@@ -125,6 +125,7 @@ describe('prettier-plugin', () => {
 			const input = `export component Test(){let count=0;<div>{"Hello"}</div>}`;
 			const expected = `export component Test() {
   let count = 0;
+
   <div>{'Hello'}</div>
 }`;
 			const result = await format(input, { singleQuote: true });
@@ -135,6 +136,7 @@ describe('prettier-plugin', () => {
 			const input = `export component Test(){let count=0;<div>{"Hello"}</div>}`;
 			const expected = `export component Test() {
   let count = 0;
+
   <div>{'Hello'}</div>
 }`;
 			const result = await formatWithCursorHelper(input, {
@@ -1109,6 +1111,7 @@ export component Test({ a, b }: Props) {}`;
 			const expected = `export component Test() {
   const a = 1
   const b = 2
+
   <div>{a + b}</div>
 }`;
 			const result = await format(input, { singleQuote: true, semi: false });
@@ -1124,6 +1127,7 @@ export component Test({ a, b }: Props) {}`;
 			const expected = `export component Test() {
   const a = 1;
   const b = 2;
+
   <div>{a + b}</div>
 }`;
 			const result = await format(input, { singleQuote: true, semi: true });
@@ -1483,6 +1487,51 @@ const [obj1, obj2] = arrayOfObjects;`;
 			expect(result).toBeWithNewline(expected);
 		});
 
+		it('adds a blank line between JS statements and TSRX elements in component bodies', async () => {
+			const input = `component App() {
+  const title = 'Hello';
+  <h1>{title}</h1>
+}`;
+			const expected = `component App() {
+  const title = 'Hello';
+
+  <h1>{title}</h1>
+}`;
+
+			const result = await format(input, { singleQuote: true, printWidth: 100 });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('adds a blank line between JS statements and TSRX elements inside element children', async () => {
+			const input = `<section>
+  const title = 'Hello';
+  <h1>{title}</h1>
+  if (!items.length) {
+    return null;
+  }
+  <ul>{items.map((item) => <li>{item.name}</li>)}</ul>
+</section>`;
+			const expected = `<section>
+  const title = 'Hello';
+
+  <h1>{title}</h1>
+  if (!items.length) {
+    return null;
+  }
+
+  <ul>
+    {items.map(
+      (item) => <li>
+        {item.name}
+      </li>,
+    )}
+  </ul>
+</section>`;
+
+			const result = await format(input, { singleQuote: true, printWidth: 100 });
+			expect(result).toBeWithNewline(expected);
+		});
+
 		it('should keep a new line between elements or component if provided', async () => {
 			const expected = `<Something>
   <div>{'Hello'}</div>
@@ -1759,6 +1808,7 @@ type GetRootNode = () => RootNode;`;
 			const expected = `component App() {
   <div>
     const a = 1;
+
     <div>
       const b = 1;
     </div>
@@ -1768,6 +1818,7 @@ type GetRootNode = () => RootNode;`;
   </div>
   <div>
     const a = 2;
+
     <div>
       const b = 1;
     </div>
@@ -2283,6 +2334,7 @@ files = [...(files ?? []), ...dt.files];`;
 			const expected = `component Test() {
   try {
     const data = await fetchData();
+
     <div>{data}</div>
   } pending {
     <div>{'Loading...'}</div>
@@ -2804,6 +2856,7 @@ const sink: import('ripple/server').SSRStreamSink = {
 
 			const expected = `export component App() {
   const &[context] = track(globalContext.get().theme);
+
   <div>
     <TypedComponent />
     {context}
@@ -2933,6 +2986,7 @@ function test() {
 	it('should preserve the exact order with a commented out component a text literal sibling', async () => {
 		const expected = `component Something({ children }) {
   const test = 'yo';
+
   <Another>
     {\`Content inside \${test} Another component\`}
     // component children() {
@@ -2948,6 +3002,7 @@ function test() {
 	it('should preserve the blank line between a commented out component and text literal sibling', async () => {
 		const expected = `component Something({ children }) {
   const test = 'yo';
+
   <Another>
     {\`Content inside \${test} Another component\`}
 
@@ -2964,6 +3019,7 @@ function test() {
 	it('should preserve the blank line between a component and text literal sibling inside element', async () => {
 		const expected = `component Something({ children }) {
   const test = 'yo';
+
   <Another>
     {\`Content inside \${test} Another component\`}
 
@@ -3170,6 +3226,7 @@ function test() {
   <div id="second-top-block">
     <div>
       let x = 1;
+
       // comment
       <div>{'Test'}</div>
     </div>
@@ -3620,6 +3677,7 @@ second"</pre>
 	it('should not insert a new line between js and jsx if not provided', async () => {
 		const expected = `export component App() {
   let text = 'something';
+
   <div>{String(text)}</div>
 }`;
 
@@ -3634,6 +3692,7 @@ second"</pre>
 	it('should keep a new line between js and jsx if provided', async () => {
 		const expected = `export component App() {
   let text = 'something';
+
   <div>{String(text)}</div>
 }`;
 
@@ -3731,6 +3790,7 @@ second"</pre>
   type t8 = unknown;
   type t9 = never;
   type t10 = void;
+
   <div>{'test'}</div>
 }`;
 
@@ -3772,6 +3832,7 @@ second"</pre>
   type t21 = Parameters<(x: number, y: string) => void>;
   type t27 = new () => object;
   type t41 = ReturnType<typeof Math.max>;
+
   <div>{'test'}</div>
 }`;
 
@@ -3791,6 +3852,7 @@ second"</pre>
   let open: Tracked<boolean> = track(false);
   let items: Array<string> = [];
   let map: Map<string, number> = new Map();
+
   <div>{'test'}</div>
 }`;
 
@@ -3810,6 +3872,7 @@ second"</pre>
   type StringOrNumber = string | number;
   type Props = { a: string } & { b: number };
   let value: string | null = null;
+
   <div>{'test'}</div>
 }`;
 
@@ -4013,6 +4076,7 @@ const deleteButton = container.querySelector(
 			const expected = `component Test() {
   let value: string | null = null;
   let length = value!.length;
+
   <div>{length}</div>
 }`;
 			const result = await format(input);
@@ -4501,6 +4565,7 @@ interface Params<T> {}`;
 			const expected = `export component App() {
   let text = 'Hello <span>world</span>';
   let result = text.match(/<span>/);
+
   <div>{String(result)}</div>
 }`;
 
@@ -4550,6 +4615,7 @@ interface Params<T> {}`;
 			const expected = `export component App() {
   let htmlString = '<p>Paragraph</p>';
   let paragraphs = htmlString.match(/<p>/g);
+
   <div class="container">
     <p>{'Some Random text'}</p>
   </div>
@@ -5794,11 +5860,13 @@ if (status === 'a') status = 'b'; else if (status === 'b') status = 'c'; else st
 				const input = `component Test() {
   let x = 0;
   if (x === 0) x = 1;
+
   <div>{x}</div>
 }`;
 				const expected = `component Test() {
   let x = 0;
   if (x === 0) x = 1;
+
   <div>{x}</div>
 }`;
 
@@ -5810,12 +5878,14 @@ if (status === 'a') status = 'b'; else if (status === 'b') status = 'c'; else st
 				const input = `component Test() {
   let x = 0;
   if (x === 0) x = 1; else x = 2;
+
   <div>{x}</div>
 }`;
 				const expected = `component Test() {
   let x = 0;
   if (x === 0) x = 1;
   else x = 2;
+
   <div>{x}</div>
 }`;
 
@@ -5827,6 +5897,7 @@ if (status === 'a') status = 'b'; else if (status === 'b') status = 'c'; else st
 				const input = `component Test() {
   let x = 0;
   if (x === 0) if (x === 1) x = 2; else x = 3;
+
   <div>{x}</div>
 }`;
 				const expected = `component Test() {
@@ -5834,6 +5905,7 @@ if (status === 'a') status = 'b'; else if (status === 'b') status = 'c'; else st
   if (x === 0)
     if (x === 1) x = 2;
     else x = 3;
+
   <div>{x}</div>
 }`;
 

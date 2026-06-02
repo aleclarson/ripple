@@ -4864,6 +4864,32 @@ function getBlankLinesBetweenNodes(currentNode, nextNode) {
 }
 
 /**
+ * @param {AST.Node | AST.Comment} node
+ * @returns {boolean}
+ */
+function is_tsrx_rendered_element(node) {
+	return node.type === 'Element';
+}
+
+/**
+ * @param {AST.Node | AST.Comment} node
+ * @returns {boolean}
+ */
+function is_normal_js_statement(node) {
+	return (
+		node.type !== 'Element' &&
+		node.type !== 'Component' &&
+		node.type !== 'TSRXExpression' &&
+		node.type !== 'Text' &&
+		node.type !== 'Html' &&
+		node.type !== 'JSXElement' &&
+		node.type !== 'JSXFragment' &&
+		node.type !== 'JSXText' &&
+		!node.type.startsWith('JSX')
+	);
+}
+
+/**
  * Determine if a blank line should be added between nodes
  * @param {AST.Node | AST.Comment} currentNode - Current node
  * @param {AST.Node | AST.Comment} nextNode - Next node
@@ -4898,6 +4924,10 @@ function shouldAddBlankLine(currentNode, nextNode) {
 	// Special case: Always add blank line after import declarations when followed by non-imports
 	// This is standard Prettier behavior for separating imports from code
 	if (currentNode.type === 'ImportDeclaration' && nextNode.type !== 'ImportDeclaration') {
+		return true;
+	}
+
+	if (is_normal_js_statement(currentNode) && is_tsrx_rendered_element(nextNode)) {
 		return true;
 	}
 
@@ -6683,18 +6713,10 @@ function printElement(element, path, options, print) {
 					? nextChild.leadingComments[0]
 					: nextChild;
 			const whitespaceLinesCount = getBlankLinesBetweenNodes(currentChild, whitespaceTarget);
-			const isTextOrHtmlChild =
-				currentChild.type === 'TSRXExpression' ||
-				currentChild.type === 'Text' ||
-				currentChild.type === 'Html' ||
-				nextChild.type === 'TSRXExpression' ||
-				nextChild.type === 'Text' ||
-				nextChild.type === 'Html';
-
 			if (whitespaceLinesCount > 0) {
 				finalChildren.push(hardline);
 				finalChildren.push(hardline);
-			} else if (!isTextOrHtmlChild && shouldAddBlankLine(currentChild, nextChild)) {
+			} else if (shouldAddBlankLine(currentChild, nextChild)) {
 				finalChildren.push(hardline);
 				finalChildren.push(hardline);
 			} else {
