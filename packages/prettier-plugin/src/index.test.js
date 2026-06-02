@@ -528,6 +528,7 @@ function foo() {
 export default component Basic() {
   <div class="container">
     <h1>{'Welcome to Ripple!'}</h1>
+
     const items = [];
 
     <div class="counter">
@@ -1491,11 +1492,14 @@ const [obj1, obj2] = arrayOfObjects;`;
 			const input = `component App() {
   const title = 'Hello';
   <h1>{title}</h1>
+  const subtitle = 'World';
 }`;
 			const expected = `component App() {
   const title = 'Hello';
 
   <h1>{title}</h1>
+
+  const subtitle = 'World';
 }`;
 
 			const result = await format(input, { singleQuote: true, printWidth: 100 });
@@ -1506,6 +1510,7 @@ const [obj1, obj2] = arrayOfObjects;`;
 			const input = `<section>
   const title = 'Hello';
   <h1>{title}</h1>
+  const subtitle = 'World';
   if (!items.length) {
     return null;
   }
@@ -1515,6 +1520,8 @@ const [obj1, obj2] = arrayOfObjects;`;
   const title = 'Hello';
 
   <h1>{title}</h1>
+
+  const subtitle = 'World';
   if (!items.length) {
     return null;
   }

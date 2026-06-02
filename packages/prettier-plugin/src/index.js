@@ -4877,15 +4877,8 @@ function is_tsrx_rendered_element(node) {
  */
 function is_normal_js_statement(node) {
 	return (
-		node.type !== 'Element' &&
-		node.type !== 'Component' &&
-		node.type !== 'TSRXExpression' &&
-		node.type !== 'Text' &&
-		node.type !== 'Html' &&
-		node.type !== 'JSXElement' &&
-		node.type !== 'JSXFragment' &&
-		node.type !== 'JSXText' &&
-		!node.type.startsWith('JSX')
+		node.type.endsWith('Statement') ||
+		(node.type.endsWith('Declaration') && node.type !== 'ImportDeclaration')
 	);
 }
 
@@ -4927,7 +4920,10 @@ function shouldAddBlankLine(currentNode, nextNode) {
 		return true;
 	}
 
-	if (is_normal_js_statement(currentNode) && is_tsrx_rendered_element(nextNode)) {
+	if (
+		(is_normal_js_statement(currentNode) && is_tsrx_rendered_element(nextNode)) ||
+		(is_tsrx_rendered_element(currentNode) && is_normal_js_statement(nextNode))
+	) {
 		return true;
 	}
 
