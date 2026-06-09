@@ -29,6 +29,10 @@ const react_platform = {
 	validation: {
 		requireUseServerForAwait: false,
 	},
+	hooks: {
+		moduleScopedHookComponents: true,
+		componentBodyHookHelpers: true,
+	},
 };
 
 export const transform = createJsxTransform(react_platform);

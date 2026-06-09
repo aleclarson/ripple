@@ -102,7 +102,7 @@ export interface JsxTransformOptions {
 	comments?: AST.CommentWithLocation[];
 	/**
 	 * Override whether hook-isolation helper components are emitted directly at
-	 * module scope. Some runtime targets enable this, while editor tooling
+	 * module scope. React runtime compilation enables this, while editor tooling
 	 * can disable it to preserve lexical `typeof` helper prop types.
 	 */
 	moduleScopedHookComponents?: boolean;
@@ -160,10 +160,15 @@ export interface JsxPlatformHooks {
 	/**
 	 * Emit hook-isolation helper components as unique module-scope declarations
 	 * instead of lazily creating and caching them from the parent component body.
-	 * Targets that use compiler-generated branch helpers enable this so helper
-	 * declarations are shared across renders.
+	 * React enables this so generated branches stay compatible with the React
+	 * Compiler's Rules of Hooks validation.
 	 */
 	moduleScopedHookComponents?: boolean;
+	/**
+	 * Split ordinary uppercase function component bodies when an early
+	 * conditional return would make later React/Preact hooks conditional.
+	 */
+	componentBodyHookHelpers?: boolean;
 	/**
 	 * Inject module-level imports after the main walk. Default: import
 	 * `Suspense` from `platform.imports.suspense` and `TsrxErrorBoundary`
