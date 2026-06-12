@@ -14,9 +14,13 @@ After resetting this branch to the latest upstream commit, re-apply the hook-saf
    - hook error constants/reporters
    - hook-call detection helpers
    - hook-safe outer-binding validation helpers
-4. Keep the behavioral wiring from `38be5f346856` separate from this extraction. Reintroduce only the small calls/sites that upstream still lacks, resolving conflicts in `index.js` around helper creation, hook splitting, for-of/switch/try handling, and React/Preact platform hooks.
-5. Validate with:
-   - `pnpm test --project tsrx-react -- packages/tsrx-react/tests/basic.test.js`
-   - `pnpm test --project tsrx-preact -- packages/tsrx-preact/tests/basic.test.js`
+4. Copy the isolated hook-hoisting test harness and target-specific test entries onto the reset branch:
+   - `packages/tsrx/tests/shared/hook-hoisting.js`
+   - `packages/tsrx-react/tests/hook-hoisting.test.js`
+   - `packages/tsrx-preact/tests/hook-hoisting.test.js`
+5. Keep the behavioral wiring from `38be5f346856` separate from this extraction. Reintroduce only the small calls/sites that upstream still lacks, resolving conflicts in `index.js` around helper creation, hook splitting, for-of/switch/try handling, and React/Preact platform hooks.
+6. Validate with:
+   - `pnpm test --project tsrx-react -- packages/tsrx-react/tests/basic.test.js packages/tsrx-react/tests/hook-hoisting.test.js`
+   - `pnpm test --project tsrx-preact -- packages/tsrx-preact/tests/basic.test.js packages/tsrx-preact/tests/hook-hoisting.test.js`
 
 This should keep future rebases focused on a stable module import plus a few integration call sites, rather than repeatedly reconciling the hook-safety implementation inside `index.js`.
