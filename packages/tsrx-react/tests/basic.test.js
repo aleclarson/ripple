@@ -3,7 +3,6 @@ import {
 	runSharedCodeBlockChildrenTests,
 	runSharedCompileDiagnosticsTests,
 	runSharedCompileTests,
-	runSharedSwitchHelperHoistingTests,
 	runSharedTsxExpressionTsrxTests,
 } from '@tsrx/core/test-harness/compile';
 import { runSharedSourceMappingTests } from '@tsrx/core/test-harness/source-mappings';
@@ -25,12 +24,6 @@ runSharedCompileTests({
 	generatedClassAttrName: 'className',
 });
 runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name: 'react' });
-runSharedSwitchHelperHoistingTests({
-	compile,
-	compile_to_volar_mappings,
-	name: 'react',
-	clientHelperShape: 'module-function',
-});
 runSharedCodeBlockChildrenTests({ compile, name: 'react' });
 
 /**

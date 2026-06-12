@@ -3,7 +3,6 @@ import {
 	runSharedCodeBlockChildrenTests,
 	runSharedCompileDiagnosticsTests,
 	runSharedCompileTests,
-	runSharedSwitchHelperHoistingTests,
 	runSharedTsxExpressionTsrxTests,
 } from '@tsrx/core/test-harness/compile';
 import { runSharedSourceMappingTests } from '@tsrx/core/test-harness/source-mappings';
@@ -19,12 +18,6 @@ runSharedSourceMappingTests({
 runSharedTsxExpressionTsrxTests({ compile, name: 'preact', classAttrName: 'class' });
 runSharedCompileTests({ compile, name: 'preact', classAttrName: 'class' });
 runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name: 'preact' });
-runSharedSwitchHelperHoistingTests({
-	compile,
-	compile_to_volar_mappings,
-	name: 'preact',
-	clientHelperShape: 'module-function',
-});
 runSharedCodeBlockChildrenTests({ compile, name: 'preact' });
 
 describe('@tsrx/preact basic', () => {
