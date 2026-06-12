@@ -20,6 +20,7 @@
 
 import { parseModule } from '@tsrx/core';
 import { doc } from 'prettier';
+import { shouldAddTSRXControlFlowBlankLine } from './control-flow-spacing.js';
 
 const { builders, utils } = doc;
 const {
@@ -4816,25 +4817,6 @@ function getBlankLinesBetweenNodes(currentNode, nextNode) {
 }
 
 /**
- * @param {AST.Node | AST.Comment} node
- * @returns {boolean}
- */
-function is_tsrx_rendered_element(node) {
-	return node.type === 'Element';
-}
-
-/**
- * @param {AST.Node | AST.Comment} node
- * @returns {boolean}
- */
-function is_normal_js_statement(node) {
-	return (
-		node.type.endsWith('Statement') ||
-		(node.type.endsWith('Declaration') && node.type !== 'ImportDeclaration')
-	);
-}
-
-/**
  * Determine if a blank line should be added between nodes
  * @param {AST.Node | AST.Comment} currentNode - Current node
  * @param {AST.Node | AST.Comment} nextNode - Next node
@@ -4872,10 +4854,7 @@ function shouldAddBlankLine(currentNode, nextNode) {
 		return true;
 	}
 
-	if (
-		(is_normal_js_statement(currentNode) && is_tsrx_rendered_element(nextNode)) ||
-		(is_tsrx_rendered_element(currentNode) && is_normal_js_statement(nextNode))
-	) {
+	if (shouldAddTSRXControlFlowBlankLine(currentNode, nextNode)) {
 		return true;
 	}
 
@@ -6016,7 +5995,7 @@ function printJSXElement(node, path, options, print) {
 		formattedChildren.push(typeof childDoc === 'string' ? printRawText(childDoc) : childDoc);
 		if (i < childrenDocs.length - 1) {
 			// Preserve a single authored blank line between children (2+ collapse to 1).
-			const blank = getBlankLinesBetweenNodes(childNodes[i], leadingAnchor(childNodes[i + 1])) > 0;
+			const blank = shouldAddBlankLine(childNodes[i], leadingAnchor(childNodes[i + 1]));
 			formattedChildren.push(blank ? [hardline, hardline] : hardline);
 		}
 	}
@@ -6136,7 +6115,7 @@ function printJSXFragment(node, path, options, print) {
 		formattedChildren.push(childrenDocs[i]);
 		if (i < childrenDocs.length - 1) {
 			// Preserve a single authored blank line between children (2+ collapse to 1).
-			const blank = getBlankLinesBetweenNodes(childNodes[i], leadingAnchor(childNodes[i + 1])) > 0;
+			const blank = shouldAddBlankLine(childNodes[i], leadingAnchor(childNodes[i + 1]));
 			formattedChildren.push(blank ? [hardline, hardline] : hardline);
 		}
 	}
@@ -6349,9 +6328,7 @@ function printJSXCodeBlock(node, path, options, print) {
 			const last = node.body[node.body.length - 1];
 			const renderStart =
 				/** @type {AST.NodeWithMaybeComments} */ (node.render).leadingComments?.[0] ?? node.render;
-			parts.push(
-				getBlankLinesBetweenNodes(last, renderStart) > 0 ? [hardline, hardline] : hardline,
-			);
+			parts.push(shouldAddBlankLine(last, renderStart) ? [hardline, hardline] : hardline);
 		}
 		parts.push(path.call(print, 'render'));
 	}
