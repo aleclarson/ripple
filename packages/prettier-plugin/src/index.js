@@ -4816,6 +4816,25 @@ function getBlankLinesBetweenNodes(currentNode, nextNode) {
 }
 
 /**
+ * @param {AST.Node | AST.Comment} node
+ * @returns {boolean}
+ */
+function is_tsrx_rendered_element(node) {
+	return node.type === 'Element';
+}
+
+/**
+ * @param {AST.Node | AST.Comment} node
+ * @returns {boolean}
+ */
+function is_normal_js_statement(node) {
+	return (
+		node.type.endsWith('Statement') ||
+		(node.type.endsWith('Declaration') && node.type !== 'ImportDeclaration')
+	);
+}
+
+/**
  * Determine if a blank line should be added between nodes
  * @param {AST.Node | AST.Comment} currentNode - Current node
  * @param {AST.Node | AST.Comment} nextNode - Next node
@@ -4850,6 +4869,13 @@ function shouldAddBlankLine(currentNode, nextNode) {
 	// Special case: Always add blank line after import declarations when followed by non-imports
 	// This is standard Prettier behavior for separating imports from code
 	if (currentNode.type === 'ImportDeclaration' && nextNode.type !== 'ImportDeclaration') {
+		return true;
+	}
+
+	if (
+		(is_normal_js_statement(currentNode) && is_tsrx_rendered_element(nextNode)) ||
+		(is_tsrx_rendered_element(currentNode) && is_normal_js_statement(nextNode))
+	) {
 		return true;
 	}
 

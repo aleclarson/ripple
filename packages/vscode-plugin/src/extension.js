@@ -15,17 +15,8 @@
  *
  * typescript-plugin: A Volar-based TypeScript plugin that transforms Ripple component files into
  * TypeScript virtual code. This plugin enables TypeScript's language service to understand Ripple
- * syntax. It's already loaded and used by language-server, so we don't need to configure
- * it separately.
- *
- * IMPORTANT: DO NOT use "typescriptServerPlugins" in package.json
- * ----------------------------------------------------------------
- * The "typescriptServerPlugins" contribution point would tell VSCode's TypeScript extension to
- * load typescript-plugin into its own tsserver instance. However:
- * 1. We already run language-server which uses typescript-plugin internally
- * 2. Loading it twice (once in our LSP, once in TS extension) creates conflicts and duplication
- * 3. Our language server provides more features than just the TypeScript plugin alone
- * 4. We use runtime patching instead to make the TS extension recognize Ripple files
+ * syntax. It's loaded by language-server for Ripple documents and registered with VS Code's
+ * TypeScript extension so .ts/.tsx files can resolve imports of .tsrx modules.
  *
  * IMPORTANT: TypeScript Command Integration
  * ----------------------------------------
@@ -566,18 +557,17 @@ export async function deactivate() {
  * 1. jsTsLanguageModes - The list of supported language IDs
  * 2. isSupportedLanguageMode - The function that checks if a file should be handled
  *
- * Why patching instead of typescriptServerPlugins?
- * -------------------------------------------------
- * The typescriptServerPlugins contribution point would load typescript-plugin into
- * the TypeScript extension's tsserver. However, we already run our own language server
- * (language-server) which uses typescript-plugin internally. Loading the
- * plugin twice would create conflicts and duplicate processing.
+ * Why patching in addition to typescriptServerPlugins?
+ * ---------------------------------------------------
+ * The typescriptServerPlugins contribution point loads typescript-plugin into
+ * the TypeScript extension's tsserver, which lets TypeScript and JavaScript files
+ * resolve imports of .tsrx modules. This runtime patch still makes the TypeScript
+ * extension treat open Ripple documents as TypeScript-like files for UI integration.
  *
- * By patching directly instead, we:
- * 1. Avoid double-loading typescript-plugin (it's already in our language server)
- * 2. Get deeper integration with the TypeScript extension's UI (menus, commands)
- * 3. Enable TypeScript commands for Ripple files without running duplicate language services
- * 4. Keep language intelligence in language-server while exposing TS UI features
+ * By patching as well, we:
+ * 1. Get deeper integration with the TypeScript extension's UI (menus, commands)
+ * 2. Enable TypeScript commands for Ripple files
+ * 3. Keep Ripple document language intelligence in language-server while exposing TS UI features
  *
  * Combined with the context variables set by setupDynamicContexts(), this patch enables
  * the full suite of TypeScript commands and features to work seamlessly with Ripple files.

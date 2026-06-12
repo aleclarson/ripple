@@ -61,6 +61,12 @@
     "ovsx": "catalog:default"
   },
   "contributes": {
+    "typescriptServerPlugins": [
+      {
+        "name": "@tsrx/typescript-plugin",
+        "enableForWorkspaceTypeScriptVersions": true
+      }
+    ],
     "breakpoints": [
       {
         "language": "ripple"
