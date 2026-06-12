@@ -1,5 +1,78 @@
 # @tsrx/vue
 
+## 0.1.28
+
+### Patch Changes
+
+- [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Keep native template nodes in
+  JSX-child shape inside synthetic fragments on JSX-emitting targets (react,
+  preact, solid, vue). A fragment nested in an expression container could collapse
+  to a bare expression placed directly in a fragment children list
+  (`<>{a} <>{<>{b}</>}</></>` compiled to `<>{a}b</>`), which JSX reads as literal
+  text — in both production output and the TS/Volar virtual code.
+- Updated dependencies
+  [[`f001849`](https://github.com/Ripple-TS/ripple/commit/f00184940979a77cbf6873a811caaaa436feab46),
+  [`4af2591`](https://github.com/Ripple-TS/ripple/commit/4af259139d118a27d177531aa6a21435a3f3a015),
+  [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482),
+  [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482),
+  [`f1a4c10`](https://github.com/Ripple-TS/ripple/commit/f1a4c10d2ad8ed604375f36f7ae3b653fe95ed1a)]:
+  - @tsrx/core@0.1.28
+
+## 0.1.27
+
+### Patch Changes
+
+- Updated dependencies
+  [[`60a78c9`](https://github.com/Ripple-TS/ripple/commit/60a78c9def09eed6d706c42bc751d2d051d1d57f)]:
+  - @tsrx/core@0.1.27
+
+## 0.1.26
+
+### Patch Changes
+
+- [#1240](https://github.com/Ripple-TS/ripple/pull/1240)
+  [`92982ee`](https://github.com/Ripple-TS/ripple/commit/92982ee5cd2e6d971b5b650ec1df70483c9716aa)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Add parser, formatter, and
+  compiler support for `<{expr}>` dynamic element tags.
+
+- [#1241](https://github.com/Ripple-TS/ripple/pull/1241)
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Treat dynamic tags
+  (`<{expr}>`) like the runtime `Dynamic` helper during scoped CSS analysis on all
+  targets: type selectors are no longer pruned (the tag can resolve to any
+  element), the element's classes match scoped selectors, and the scope hash is
+  applied to its class.
+
+- [#1241](https://github.com/Ripple-TS/ripple/pull/1241)
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Remove the runtime `Dynamic`
+  component exports; dynamic rendering is the `<{expr}>` tag syntax. The `Dynamic`
+  type declarations remain so type-only output keeps type-checking, but the JS is
+  gone: React and Preact production output now lowers dynamic tags to a scoped
+  component alias (`const TsrxDynamic_N = expr;`), Ripple SSR uses the internal
+  `_$_.dynamic_element` helper, and the imported-`Dynamic` detection for scoped
+  CSS is removed (the element marking is now `metadata.dynamicElement`, set by the
+  dynamic-tag lowering).
+
+- [#1241](https://github.com/Ripple-TS/ripple/pull/1241)
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Lower dynamic tags
+  (`<{expr}>`) for Solid and Vue production output to scoped component bindings
+  instead of the `Dynamic` helper component. Solid binds
+  `const TsrxDynamic_N = _tsrx_dynamic(() => expr)` (aliasing `dynamic` from
+  `@solidjs/web`); Vue aliases the tag inside an import-free expression-child IIFE
+  so vue-jsx-vapor's render block keeps it reactive. Declarations are placed in
+  the scope that owns the expression (e.g. inside loop callbacks), and the
+  type-only transform keeps the `<TsrxDynamic is={expr}>` shape with source
+  mappings for both tag positions.
+- Updated dependencies
+  [[`92982ee`](https://github.com/Ripple-TS/ripple/commit/92982ee5cd2e6d971b5b650ec1df70483c9716aa),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)]:
+  - @tsrx/core@0.1.26
+
 ## 0.1.25
 
 ### Patch Changes

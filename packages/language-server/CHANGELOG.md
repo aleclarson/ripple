@@ -1,5 +1,39 @@
 # @ripple-ts/language-server
 
+## 0.3.80
+
+### Patch Changes
+
+- Updated dependencies
+  [[`f001849`](https://github.com/Ripple-TS/ripple/commit/f00184940979a77cbf6873a811caaaa436feab46),
+  [`4af2591`](https://github.com/Ripple-TS/ripple/commit/4af259139d118a27d177531aa6a21435a3f3a015),
+  [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482),
+  [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482),
+  [`f1a4c10`](https://github.com/Ripple-TS/ripple/commit/f1a4c10d2ad8ed604375f36f7ae3b653fe95ed1a)]:
+  - @tsrx/core@0.1.28
+  - @tsrx/typescript-plugin@0.3.80
+
+## 0.3.79
+
+### Patch Changes
+
+- Updated dependencies
+  [[`60a78c9`](https://github.com/Ripple-TS/ripple/commit/60a78c9def09eed6d706c42bc751d2d051d1d57f)]:
+  - @tsrx/core@0.1.27
+  - @tsrx/typescript-plugin@0.3.79
+
+## 0.3.78
+
+### Patch Changes
+
+- Updated dependencies
+  [[`92982ee`](https://github.com/Ripple-TS/ripple/commit/92982ee5cd2e6d971b5b650ec1df70483c9716aa),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)]:
+  - @tsrx/core@0.1.26
+  - @tsrx/typescript-plugin@0.3.78
+
 ## 0.3.77
 
 ### Patch Changes

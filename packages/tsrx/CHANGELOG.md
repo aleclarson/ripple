@@ -1,5 +1,117 @@
 # @tsrx/core
 
+## 0.1.28
+
+### Patch Changes
+
+- [#1255](https://github.com/Ripple-TS/ripple/pull/1255)
+  [`f001849`](https://github.com/Ripple-TS/ripple/commit/f00184940979a77cbf6873a811caaaa436feab46)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Always parse `@{ … }` in
+  template text position as a `JSXCodeBlock`. A code block preceded by text on the
+  same line (e.g. `Hello @{props.username}`) was split into JSX text ending in a
+  literal `@` plus a `{ … }` expression container, because the template raw-text
+  scan only stopped at `<`, `{`, `}`, and control-flow directives. The scan now
+  also stops at a `@{` code-block start, so inline blocks after text parse the
+  same as blocks at the start of a body. A lone `@` not directly followed by `{`
+  remains plain text.
+
+- [#1254](https://github.com/Ripple-TS/ripple/pull/1254)
+  [`4af2591`](https://github.com/Ripple-TS/ripple/commit/4af259139d118a27d177531aa6a21435a3f3a015)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Fix `@{ … }` code blocks in
+  template children position for the shared JSX transform (react, preact, solid,
+  vue). Nesting deeper than two levels leaked a raw code block into the statement
+  stream — triggering spurious `_tsrx_child_*` captures and an IIFE whose render
+  output was discarded (dropped in react/preact, rendered out of position in
+  solid) — and flattened blocks merged lexical scopes, so shadowed declarations
+  produced invalid output. Each block is now its own scope and the lowering pays
+  only for what the block uses: template-only blocks merge statically into the
+  parent, code-only blocks become a plain `{ … }` statement block, blocks with
+  both setup code and render output become a scoped IIFE child, and nested chains
+  fold into a single closure with nested plain blocks. Empty chains compile to
+  nothing at any depth.
+
+- [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Keep native template nodes in
+  JSX-child shape inside synthetic fragments on JSX-emitting targets (react,
+  preact, solid, vue). A fragment nested in an expression container could collapse
+  to a bare expression placed directly in a fragment children list
+  (`<>{a} <>{<>{b}</>}</></>` compiled to `<>{a}b</>`), which JSX reads as literal
+  text — in both production output and the TS/Volar virtual code.
+
+- [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Parse template text that
+  touches a following tag (`<>hello<span>…`) as text plus a tag. The tokenizer
+  treated a `<` directly after a text run ending in an identifier character as the
+  start of a TypeScript type-argument list (`hello<T>`), so the tag failed to
+  parse with "Unexpected token `>`".
+
+- [#1256](https://github.com/Ripple-TS/ripple/pull/1256)
+  [`f1a4c10`](https://github.com/Ripple-TS/ripple/commit/f1a4c10d2ad8ed604375f36f7ae3b653fe95ed1a)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Recognize trailing `//` line
+  comments in template text after a sibling on the same line. A `//` was only a
+  comment when nothing but whitespace preceded it on its line, so
+  `@{ … }  // note` (or an element/expression container followed by a trailing
+  comment) treated the comment as text — and crashed with `Unexpected token` when
+  the comment contained `<`. A `//` preceded only by whitespace since the start of
+  its text run (right after a code block, element, or expression container) now
+  starts a comment. `//` after real text on the same line is still literal, so
+  `https://…` URLs stay text.
+
+## 0.1.27
+
+### Patch Changes
+
+- [#1244](https://github.com/Ripple-TS/ripple/pull/1244)
+  [`60a78c9`](https://github.com/Ripple-TS/ripple/commit/60a78c9def09eed6d706c42bc751d2d051d1d57f)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Strip `/* … */` block
+  comments from template text on all targets. The template raw-text scanner only
+  recognized line comments, so block comments in text position leaked into
+  compiled output (production templates, server output, and to_ts virtual code)
+  and, in one position, were both recorded as a comment and kept as text. Block
+  comments are now removed from `JSXText` and recorded as comments everywhere, and
+  the Prettier plugin prints them back (including before closing tags/fragments
+  and in comment-only bodies) instead of relying on the leaked text.
+
+## 0.1.26
+
+### Patch Changes
+
+- [#1240](https://github.com/Ripple-TS/ripple/pull/1240)
+  [`92982ee`](https://github.com/Ripple-TS/ripple/commit/92982ee5cd2e6d971b5b650ec1df70483c9716aa)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Add parser, formatter, and
+  compiler support for `<{expr}>` dynamic element tags.
+
+- [#1241](https://github.com/Ripple-TS/ripple/pull/1241)
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Treat dynamic tags
+  (`<{expr}>`) like the runtime `Dynamic` helper during scoped CSS analysis on all
+  targets: type selectors are no longer pruned (the tag can resolve to any
+  element), the element's classes match scoped selectors, and the scope hash is
+  applied to its class.
+
+- [#1241](https://github.com/Ripple-TS/ripple/pull/1241)
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Remove the runtime `Dynamic`
+  component exports; dynamic rendering is the `<{expr}>` tag syntax. The `Dynamic`
+  type declarations remain so type-only output keeps type-checking, but the JS is
+  gone: React and Preact production output now lowers dynamic tags to a scoped
+  component alias (`const TsrxDynamic_N = expr;`), Ripple SSR uses the internal
+  `_$_.dynamic_element` helper, and the imported-`Dynamic` detection for scoped
+  CSS is removed (the element marking is now `metadata.dynamicElement`, set by the
+  dynamic-tag lowering).
+
+- [#1241](https://github.com/Ripple-TS/ripple/pull/1241)
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Lower dynamic tags
+  (`<{expr}>`) for Solid and Vue production output to scoped component bindings
+  instead of the `Dynamic` helper component. Solid binds
+  `const TsrxDynamic_N = _tsrx_dynamic(() => expr)` (aliasing `dynamic` from
+  `@solidjs/web`); Vue aliases the tag inside an import-free expression-child IIFE
+  so vue-jsx-vapor's render block keeps it reactive. Declarations are placed in
+  the scope that owns the expression (e.g. inside loop callbacks), and the
+  type-only transform keeps the `<TsrxDynamic is={expr}>` shape with source
+  mappings for both tag positions.
+
 ## 0.1.25
 
 ### Patch Changes

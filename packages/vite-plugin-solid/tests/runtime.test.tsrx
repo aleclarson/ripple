@@ -1,7 +1,6 @@
 import type { MockInstance } from 'vitest';
 import type { JSX } from '@solidjs/web';
 import { createSignal, lazy } from 'solid-js';
-import { Dynamic } from '@tsrx/solid/dynamic';
 import {
 	runSwitchFallthroughRuntimeTests,
 } from '@tsrx/core/test-harness/runtime/switch-fallthrough';
@@ -57,7 +56,7 @@ function NestedApp() @{
 
 function DynamicElementApp() @{
 	const tag = 'section';
-	<Dynamic is={tag} class="dynamic-host">{'dynamic element'}</Dynamic>
+	<{tag} class="dynamic-host">{'dynamic element'}</{tag}>
 }
 
 function DynamicChild(props: { label: string }) @{
@@ -66,13 +65,17 @@ function DynamicChild(props: { label: string }) @{
 
 function DynamicComponentApp() @{
 	const component = DynamicChild;
-	<Dynamic is={component} label="dynamic component" />
+	<{component} label="dynamic component" />
+}
+
+function DynamicSwitchHost(props: { tag: 'section' | 'article' }) @{
+	<{props.tag} class="dynamic-switch">{props.tag}</{props.tag}>
 }
 
 function DynamicSwitchApp() @{
 	const [tag, setTag] = createSignal<'section' | 'article'>('section');
 	<>
-		<Dynamic is={tag()} class="dynamic-switch">{tag()}</Dynamic>
+		<DynamicSwitchHost tag={tag()} />
 		<button
 			class="dynamic-switch-toggle"
 			onClick={() => setTag(tag() === 'section' ? 'article' : 'section')}

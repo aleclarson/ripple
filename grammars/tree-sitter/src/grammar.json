@@ -2356,6 +2356,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "jsx_statement_container"
+        },
+        {
+          "type": "SYMBOL",
           "name": "jsx_if_expression"
         },
         {
@@ -6896,6 +6900,32 @@
         }
       ]
     },
+    "_jsx_dynamic_element_name": {
+      "type": "ALIAS",
+      "content": {
+        "type": "SYMBOL",
+        "name": "jsx_dynamic_tag_expression"
+      },
+      "named": true,
+      "value": "jsx_expression"
+    },
+    "jsx_dynamic_tag_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
     "jsx_element_name": {
       "type": "CHOICE",
       "members": [
@@ -6910,6 +6940,10 @@
         {
           "type": "SYMBOL",
           "name": "jsx_member_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_jsx_dynamic_element_name"
         }
       ]
     },
@@ -6923,6 +6957,10 @@
         {
           "type": "SYMBOL",
           "name": "jsx_member_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_jsx_dynamic_element_name"
         }
       ]
     },

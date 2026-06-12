@@ -83,6 +83,94 @@ describe('TSRX parser', () => {
 		expect(returned.openingElement.name.name).toBe('div');
 	});
 
+	it('parses self-closing dynamic element tags', () => {
+		const source = 'function MyApp() { return <{Tag} class="card" />; }';
+		const returned = getReturned(source);
+
+		expect(returned.type).toBe('JSXElement');
+		expect(returned.isDynamic).toBe(true);
+		expect(returned.openingElement.isDynamic).toBe(true);
+		expect(returned.openingElement.selfClosing).toBe(true);
+		expect(returned.closingElement).toBeNull();
+		expect(returned.openingElement.name.type).toBe('JSXExpressionContainer');
+		expect(returned.openingElement.name.isDynamic).toBe(true);
+		expect(returned.openingElement.name.expression.type).toBe('Identifier');
+		expect(returned.openingElement.name.expression.name).toBe('Tag');
+		expect(
+			source.slice(
+				returned.openingElement.name.expression.start,
+				returned.openingElement.name.expression.end,
+			),
+		).toBe('Tag');
+	});
+
+	it('parses dynamic element tags with matching closing tags', () => {
+		const source = `function MyApp() {
+			return <{Child} class="card"><div>Hello</div></{Child}>;
+		}`;
+		const returned = getReturned(source);
+
+		expect(returned.type).toBe('JSXElement');
+		expect(returned.isDynamic).toBe(true);
+		expect(returned.openingElement.name.expression.name).toBe('Child');
+		expect(returned.closingElement.isDynamic).toBe(true);
+		expect(returned.closingElement.name.type).toBe('JSXExpressionContainer');
+		expect(returned.closingElement.name.expression.name).toBe('Child');
+		expect(returned.children.map((child) => child.type)).toEqual(['JSXElement']);
+	});
+
+	it('parses supported dynamic element name expressions', () => {
+		const cases = [
+			['<{Tag} />', 'Identifier', 'Tag'],
+			['<{something.prop} />', 'MemberExpression', 'something.prop'],
+			['<{arr[0]} />', 'MemberExpression', 'arr[0]'],
+			["<{'div'} />", 'Literal', "'div'"],
+			['<{`div`} />', 'TemplateLiteral', '`div`'],
+		];
+
+		for (const [tag, expressionType, expressionSource] of cases) {
+			const source = `function MyApp() { return ${tag}; }`;
+			const returned = getReturned(source);
+			const expression = returned.openingElement.name.expression;
+			expect(returned.isDynamic).toBe(true);
+			expect(expression.type).toBe(expressionType);
+			expect(source.slice(expression.start, expression.end)).toBe(expressionSource);
+		}
+	});
+
+	it('rejects static non-string dynamic element names', () => {
+		for (const tag of [
+			'<{null} />',
+			'<{undefined} />',
+			'<{true} />',
+			'<{1} />',
+			'<{{}} />',
+			'<{[]} />',
+		]) {
+			expect(() => parseModule(`function MyApp() { return ${tag}; }`, 'App.tsrx')).toThrow(
+				'Dynamic element names must be',
+			);
+		}
+	});
+
+	it('rejects dynamic element call expressions, spreads, and string interpolation', () => {
+		for (const tag of [
+			'<{tagName()} />',
+			'<{condition ? tagName() : Tag} />',
+			'<{new TagName()} />',
+			'<{({ ...tags }).tag} />',
+			'<{({ tag }).tag} />',
+			'<{[Tag][0]} />',
+			"<{'hello' + 'by'} />",
+			'<{`d${kind}`} />',
+			'<{tag`div`} />',
+		]) {
+			expect(() => parseModule(`function MyApp() { return ${tag}; }`, 'App.tsrx')).toThrow(
+				'Dynamic element names must be',
+			);
+		}
+	});
+
 	it('parses a return after a fragment variable initializer without an explicit semicolon', () => {
 		const ast = parseModule(
 			`function MyComponent() {
@@ -474,6 +562,148 @@ abc
 		expect(value.children[0].value).toContain('const x = 1');
 	});
 
+	// Collect every JSXText value in the tree, and parse with `collect` so the
+	// recorded comments can be asserted alongside the text they were removed from.
+	function parseTemplateTextsAndComments(source) {
+		/** @type {import('estree').Comment[]} */
+		const comments = [];
+		const ast = parseModule(source, 'App.tsrx', { collect: true, comments });
+		const texts = [];
+		(function walk(node) {
+			if (!node || typeof node !== 'object') return;
+			if (Array.isArray(node)) return node.forEach(walk);
+			if (node.type === 'JSXText') texts.push(node.value);
+			for (const key in node) {
+				if (key === 'loc' || key === 'start' || key === 'end') continue;
+				walk(node[key]);
+			}
+		})(ast);
+		comments.sort((a, b) => a.start - b.start);
+		return { texts, comments };
+	}
+
+	it('strips block and line comments from template text and records them as comments', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function TodoList() @{
+  <>
+    /* world 0 */
+    // hello
+    /* world 1 */
+    <ul>
+    // hello
+    /* world 2 */
+
+    </ul>
+
+    <ul>
+    // hello
+    /* world 3 */
+    // hello
+    </ul>
+    /* world 4 */
+  </>
+  }`);
+
+		for (const text of texts) {
+			expect(text).not.toMatch(/world|hello|\/\*|\/\//);
+		}
+		expect(comments.filter((comment) => comment.type === 'Block').map((c) => c.value)).toEqual([
+			' world 0 ',
+			' world 1 ',
+			' world 2 ',
+			' world 3 ',
+			' world 4 ',
+		]);
+		expect(comments.filter((comment) => comment.type === 'Line').map((c) => c.value)).toEqual([
+			' hello',
+			' hello',
+			' hello',
+			' hello',
+		]);
+	});
+
+	it('strips a block comment between words of template text', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function App() @{
+	<div>hello /* note */ world</div>
+}`);
+
+		expect(texts).toEqual(['hello  world']);
+		expect(comments.map((comment) => comment.value)).toEqual([' note ']);
+	});
+
+	it('strips a block comment that is the only element content', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function App() @{
+	<div>/* note */</div>
+}`);
+
+		expect(texts).toEqual([]);
+		expect(comments.map((comment) => comment.value)).toEqual([' note ']);
+	});
+
+	it('records a block comment before a closing fragment exactly once', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function App() @{
+<>
+<ul></ul>
+/* z */
+</>
+}`);
+
+		for (const text of texts) {
+			expect(text).not.toContain('z');
+		}
+		expect(comments.map((comment) => comment.type + ':' + comment.value)).toEqual(['Block: z ']);
+	});
+
+	it('keeps // inside template text when it is not at line start', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function App() @{
+	<div>visit https://x.com please</div>
+}`);
+
+		expect(texts).toEqual(['visit https://x.com please']);
+		expect(comments).toEqual([]);
+	});
+
+	it('keeps // after text on the same line as literal text', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function App() @{
+	<div>hi // note</div>
+}`);
+
+		expect(texts).toEqual(['hi // note']);
+		expect(comments).toEqual([]);
+	});
+
+	it('parses a trailing line comment after a `@{ }` code block on the same line', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function StatusBadge0() @{
+	<>
+		@{@{@{<>hello @{222}</>}}}  // <-- depth 4
+	</>
+}`);
+
+		expect(texts).toEqual(['hello ']);
+		expect(comments.map((comment) => comment.type + ':' + comment.value)).toEqual([
+			'Line: <-- depth 4',
+		]);
+	});
+
+	it('parses a trailing line comment after an element on the same line', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function App() @{
+	<div><b>z</b> // note
+	tail</div>
+}`);
+
+		expect(texts).toEqual(['z', 'tail']);
+		expect(comments.map((comment) => comment.type + ':' + comment.value)).toEqual(['Line: note']);
+	});
+
+	it('parses a trailing line comment after an expression container on the same line', () => {
+		const { texts, comments } = parseTemplateTextsAndComments(`function App() @{
+	<div>{x} // note
+	tail</div>
+}`);
+
+		expect(texts).toEqual([' \n\ttail']);
+		expect(comments.map((comment) => comment.type + ':' + comment.value)).toEqual(['Line: note']);
+	});
+
 	it('keeps ordinary tag names as JSX identifiers', () => {
 		const ast = parseModule('const wrapper = <tsrx><div /></tsrx>;', 'App.tsrx');
 
@@ -652,6 +882,60 @@ abc
 		const block = returned.children[0];
 		expect(block.body.map((child) => child.type)).toEqual(['VariableDeclaration']);
 		expect(block.render.openingElement.name.name).toBe('div');
+	});
+
+	it('parses a `@{ }` block preceded by text as a code block, not text plus expression container', () => {
+		const ast = parseModule(
+			`function Foo(props) @{
+				<>
+					Hello @{props.username}
+				</>
+			}`,
+			'App.tsrx',
+		);
+		const fragment = ast.body[0].body.render;
+
+		expect(fragment.children.map((child) => child.type)).toEqual(['JSXText', 'JSXCodeBlock']);
+		expect(fragment.children[0].value).toContain('Hello ');
+		const block = fragment.children[1];
+		expect(block.body.map((child) => child.type)).toEqual(['ExpressionStatement']);
+		expect(block.body[0].expression.property.name).toBe('username');
+		expect(block.render).toBeNull();
+	});
+
+	it('parses inline `@{ }` blocks between text siblings and keeps the surrounding spaces', () => {
+		const returned = getReturned(`function App() { return <div>a @{x} b @{y} c</div>; }`);
+
+		expect(returned.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXCodeBlock',
+			'JSXText',
+			'JSXCodeBlock',
+			'JSXText',
+		]);
+		expect(returned.children[0].value).toBe('a ');
+		expect(returned.children[2].value).toBe(' b ');
+		expect(returned.children[4].value).toBe(' c');
+	});
+
+	it('parses a `@{ }` block preceded by text inside an element nested in an expression container', () => {
+		const span = findElement(
+			`function App() { return <div>{cond ? <span>p @{q}</span> : null}</div>; }`,
+			'span',
+		);
+
+		expect(span.children.map((child) => child.type)).toEqual(['JSXText', 'JSXCodeBlock']);
+		expect(span.children[0].value).toBe('p ');
+	});
+
+	it('keeps a lone `@` followed by a spaced expression container as text', () => {
+		const returned = getReturned(`function App() { return <div>at @ {x}</div>; }`);
+
+		expect(returned.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXExpressionContainer',
+		]);
+		expect(returned.children[0].value).toBe('at @ ');
 	});
 
 	it('keeps locations aligned for plain JSX expression children', () => {
@@ -1089,6 +1373,72 @@ foo();`;
 		expect(builder.type).toBe('FunctionExpression');
 		expect(builder.typeParameters.type).toBe('TSTypeParameterDeclaration');
 		expect(block.render.openingElement.name.name).toBe('T');
+	});
+
+	it('parses template text touching a following element as text, not a type-argument list', () => {
+		const block = getReturned(`function App() { return @{ <>hello<span>{a}</span></> }; }`);
+
+		const fragment = block.render;
+		expect(fragment.children.map((child) => child.type)).toEqual(['JSXText', 'JSXElement']);
+		expect(fragment.children[0].value).toBe('hello');
+		expect(fragment.children[1].openingElement.name.name).toBe('span');
+	});
+
+	it('parses template text touching a following fragment as text, not a type-argument list', () => {
+		const block = getReturned(`function App() { return @{ <>hello<>{a}</></> }; }`);
+
+		const fragment = block.render;
+		expect(fragment.children.map((child) => child.type)).toEqual(['JSXText', 'JSXFragment']);
+		expect(fragment.children[0].value).toBe('hello');
+		expect(fragment.children[1].children.map((child) => child.type)).toEqual([
+			'JSXExpressionContainer',
+		]);
+	});
+
+	it('keeps expressions as containers between touching text inside an expression container', () => {
+		const block = getReturned(`function App() { return @{ <>{<>x{a}y<>{b}</>z</>}</> }; }`);
+
+		const inner = block.render.children[0].expression;
+		expect(inner.type).toBe('JSXFragment');
+		expect(inner.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXExpressionContainer',
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+		]);
+		expect(inner.children[1].expression.name).toBe('a');
+		expect(inner.children[3].children[0].expression.name).toBe('b');
+	});
+
+	it('parses expression containers at every level of nested fragments in expression position', () => {
+		const ast = parseModule(
+			`function StatusBadge() @{
+				<>{<>{a} <>{<>{a}</>}</> </>}</>
+			}`,
+			'App.tsrx',
+		);
+
+		const outer = ast.body[0].body.render;
+		expect(outer.type).toBe('JSXFragment');
+		expect(outer.children.map((child) => child.type)).toEqual(['JSXExpressionContainer']);
+
+		const level2 = outer.children[0].expression;
+		expect(level2.type).toBe('JSXFragment');
+		expect(level2.children.map((child) => child.type)).toEqual([
+			'JSXExpressionContainer',
+			'JSXText',
+			'JSXFragment',
+		]);
+		expect(level2.children[0].expression.name).toBe('a');
+
+		const level3 = level2.children[2];
+		expect(level3.children.map((child) => child.type)).toEqual(['JSXExpressionContainer']);
+
+		const level4 = level3.children[0].expression;
+		expect(level4.type).toBe('JSXFragment');
+		expect(level4.children.map((child) => child.type)).toEqual(['JSXExpressionContainer']);
+		expect(level4.children[0].expression.name).toBe('a');
 	});
 
 	it('parses parenthesized conditional JSX spread attributes in render output', () => {

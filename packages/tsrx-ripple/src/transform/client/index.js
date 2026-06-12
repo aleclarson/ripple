@@ -64,6 +64,7 @@ import {
 	is_dom_property,
 	is_declared_function_within_component,
 	is_inside_call_expression,
+	unwrap_single_return_iife,
 	is_value_static,
 	is_void_element,
 	is_element_dom_element,
@@ -97,6 +98,8 @@ import {
 	is_code_block_function_body,
 	is_tsrx_component_function,
 	is_style_element,
+	dynamic_element_import_local,
+	lower_dynamic_element,
 	rewrite_lazy_member_base,
 	should_guard_regular_js_statement,
 	strip_tsrx_style_elements,
@@ -1426,7 +1429,7 @@ function SetStateForOutsideComponent(state, more_state = {}) {
 }
 
 /**
- * @param {AST.TSRXJSXElement | ESTreeJSX.JSXFragment} node
+ * @param {AST.TSRXJSXElement | AST.TSRXJSXFragment} node
  * @param {TransformClientContext} context
  * @returns {AST.CallExpression}
  */
@@ -1587,6 +1590,15 @@ const visitors = {
 			context.state.metadata.tracking = true;
 		}
 
+		// A generated inline-component IIFE for a `@{ … }` block: after the
+		// block's statements lower into the component callback, the wrapper
+		// scope holds a lone `return _$_.tsrx_element(…)` — collapse it to the
+		// component value. Constructing the value reads no scope, so no
+		// `with_scope` is needed either.
+		if (!context.state.to_ts && node.metadata?.tsrx_code_block_component) {
+			return unwrap_single_return_iife(/** @type {AST.Expression} */ (context.next()));
+		}
+
 		// Handle direct calls to ripple-imported functions: effect(), untrack(), RippleArray(), etc.
 		if (!context.state.to_ts && callee.type === 'Identifier' && is_ripple_import(callee, context)) {
 			const ripple_runtime_method = get_ripple_namespace_call_name(callee.name);
@@ -1690,17 +1702,25 @@ const visitors = {
 			}
 		}
 
-		return b.call(
-			'_$_.with_scope',
-			b.id('__block'),
-			b.thunk({
-				...node,
-				callee: /** @type {AST.Expression} */ (context.visit(callee)),
-				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ (
-					node.arguments.map((arg) => context.visit(arg))
-				),
-			}),
-		);
+		const visited_call = {
+			...node,
+			callee: /** @type {AST.Expression} */ (context.visit(callee)),
+			arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ (
+				node.arguments.map((arg) => context.visit(arg))
+			),
+		};
+
+		// A generated code-block scope IIFE is already a zero-argument
+		// closure — use its arrow as the with_scope callback directly instead
+		// of thunking the call (`() => (() => { … })()`).
+		if (
+			node.metadata?.tsrx_code_block_scope &&
+			visited_call.callee.type === 'ArrowFunctionExpression'
+		) {
+			return b.call('_$_.with_scope', b.id('__block'), visited_call.callee);
+		}
+
+		return b.call('_$_.with_scope', b.id('__block'), b.thunk(visited_call));
 	},
 
 	TSTypeAliasDeclaration(_, context) {
@@ -1992,7 +2012,7 @@ const visitors = {
 			return context.next();
 		}
 		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(node, context);
+			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXFragment} */ (node), context);
 		}
 		return context.next();
 	},
@@ -2002,7 +2022,7 @@ const visitors = {
 			return context.next();
 		}
 		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(node, context);
+			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXElement} */ (node), context);
 		}
 		return context.next();
 	},
@@ -2056,6 +2076,13 @@ const visitors = {
 
 	Element(node, context) {
 		const { state, visit } = context;
+
+		// The TS view needs the `<TsrxDynamic is={expr}>` component shape for type
+		// checking; production codegen keeps `node.id` as the dynamic expression
+		// and renders it directly via `_$_.composite` in the component branch.
+		if (state.to_ts && lower_dynamic_element(node)) {
+			state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
+		}
 
 		if (
 			is_style_element(node) &&
@@ -2792,7 +2819,10 @@ const visitors = {
 			} else {
 				object_props = b.object(props);
 			}
-			if (metadata.tracking) {
+			// Dynamic tags (`<{expr}>`) always render through composite: the runtime
+			// resolves the expression value (component function, tag string, or
+			// null) and re-renders when a tracked expression changes.
+			if (metadata.tracking || node.isDynamic === true) {
 				const shared = b.call(
 					'_$_.composite',
 					b.thunk(/** @type {AST.Expression} */ (visit(node.id, state))),
@@ -3681,7 +3711,16 @@ function build_tsrx_ts_return_expression(children) {
 		? b.literal(null)
 		: children.length === 1
 			? children[0]
-			: b.jsx_fragment(/** @type {ESTreeJSX.JSXFragment['children']} */ (children));
+			: b.jsx_fragment(
+					// A plain expression placed directly as a JSX child reads as JSX text
+					// in the TS view (`<>{a}{b}</>` would become `<>ab</>`), so it needs
+					// an expression container to stay visible to TypeScript.
+					children.map((child) =>
+						child.type === 'JSXElement' || child.type === 'JSXFragment'
+							? child
+							: b.jsx_expression_container(child),
+					),
+				);
 }
 
 /**
@@ -4140,6 +4179,10 @@ function transform_ts_child(node, context) {
 	if (node.type === 'TSRXExpression' || node.type === 'Text') {
 		state.init?.push(b.stmt(/** @type {AST.Expression} */ (visit(node.expression, { ...state }))));
 	} else if (node.type === 'Element') {
+		if (lower_dynamic_element(node)) {
+			state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
+		}
+
 		/** @type {ESTreeJSX.JSXElement['children']} */
 		const children = [];
 		let has_children_props = false;
@@ -4870,6 +4913,13 @@ function transform_template_element(node, state, visit, child_namespace) {
  */
 function transform_children(children, context) {
 	const { visit, state, root } = context;
+	if (state.to_ts) {
+		for (const child of children) {
+			if (child.type === 'Element' && lower_dynamic_element(child)) {
+				state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
+			}
+		}
+	}
 	const normalized = normalize_children(children, {
 		...context,
 		state: { ...state, keep_component_style: state.to_ts ? true : state.keep_component_style },
@@ -4935,7 +4985,10 @@ function transform_children(children, context) {
 					(node.id.type !== 'Identifier' || !is_element_dom_element(node))),
 		) ||
 		(normalized.filter(
-			(node) => node.type !== 'VariableDeclaration' && node.type !== 'EmptyStatement',
+			(node) =>
+				node.type !== 'VariableDeclaration' &&
+				node.type !== 'BlockStatement' &&
+				node.type !== 'EmptyStatement',
 		).length === 1 &&
 			normalized.some(
 				(node) =>
@@ -4952,7 +5005,10 @@ function transform_children(children, context) {
 					/** @type {AST.TSRXExpression} */ (node).expression.type !== 'Literal',
 			)) ||
 		normalized.filter(
-			(node) => node.type !== 'VariableDeclaration' && node.type !== 'EmptyStatement',
+			(node) =>
+				node.type !== 'VariableDeclaration' &&
+				node.type !== 'BlockStatement' &&
+				node.type !== 'EmptyStatement',
 		).length > 1;
 	/** @type {AST.Identifier | null} */
 	let initial = null;
@@ -5131,6 +5187,7 @@ function transform_children(children, context) {
 
 		if (
 			node.type === 'VariableDeclaration' ||
+			node.type === 'BlockStatement' ||
 			node.type === 'ExpressionStatement' ||
 			node.type === 'ThrowStatement' ||
 			node.type === 'FunctionDeclaration' ||

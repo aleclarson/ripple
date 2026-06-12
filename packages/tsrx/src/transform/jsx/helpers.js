@@ -4,20 +4,19 @@
 import tsx from 'esrap/languages/tsx';
 
 /**
- * Zimmerframe provides `path` as the ancestor chain. A native template node whose
- * parent is another native template node renders as a JSX child; anywhere else it
- * renders as a standalone expression (e.g. a return value).
+ * Zimmerframe provides `path` as the ancestor chain. A native template node in
+ * the children list of any JSX element/fragment renders as a JSX child;
+ * anywhere else it renders as a standalone expression (e.g. a return value).
+ * The parent may be a parsed native template node or a synthetic fragment the
+ * transform built around render children — either way a bare expression in a
+ * child slot would print as JSX text.
  *
  * @param {any[]} path
  * @returns {boolean}
  */
 export function in_jsx_child_context(path) {
 	const parent = path[path.length - 1];
-	return (
-		!!parent &&
-		(parent.type === 'JSXElement' || parent.type === 'JSXFragment') &&
-		parent.metadata?.native_tsrx
-	);
+	return !!parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment');
 }
 
 /**
@@ -52,7 +51,14 @@ export function tsx_node_to_jsx_expression(node, in_jsx_child = false) {
 		(/** @type {any} */ child) => child.type !== 'JSXText' || child.value.trim() !== '',
 	);
 
-	if (children.length === 1 && children[0].type !== 'JSXText') {
+	if (
+		children.length === 1 &&
+		children[0].type !== 'JSXText' &&
+		// Reactive-block containers (dynamic tags) must stay expression
+		// children so the host JSX compiler wraps them in a render block;
+		// unwrapping to a bare call would evaluate them once.
+		children[0].metadata?.tsrx_reactive_block !== true
+	) {
 		const only = children[0];
 		if (only.type === 'JSXExpressionContainer' && !in_jsx_child) {
 			return only.expression;

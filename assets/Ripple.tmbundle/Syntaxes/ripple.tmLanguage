@@ -4941,6 +4941,10 @@
 				</dict>
 				<dict>
 					<key>include</key>
+					<string>#jsx-tag-dynamic</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#jsx-tag-without-attributes</string>
 				</dict>
 				<dict>
@@ -4968,6 +4972,10 @@
 				<dict>
 					<key>include</key>
 					<string>#jsx-tag-fragment</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-dynamic-in-expression</string>
 				</dict>
 				<dict>
 					<key>include</key>
@@ -5018,6 +5026,10 @@
 				<dict>
 					<key>include</key>
 					<string>#jsx-tag-fragment</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-dynamic</string>
 				</dict>
 				<dict>
 					<key>include</key>
@@ -5476,6 +5488,189 @@
 				</dict>
 			</array>
 		</dict>
+		<key>jsx-tag-dynamic</key>
+		<dict>
+			<key>begin</key>
+			<string>(?=&lt;\{)</string>
+			<key>end</key>
+			<string>(/&gt;)|(?:(&lt;/)\s*(\{)\s*([[:upper:]][_$[:alnum:]]*(?:\.[_$[:alpha:]][_$[:alnum:]]*)*)\s*(\})\s*(&gt;))|(?:(&lt;/)\s*(\{)([^}]*)(\})\s*(&gt;))</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.end.js</string>
+				</dict>
+				<key>10</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.end.js</string>
+				</dict>
+				<key>11</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.end.js</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.begin.js</string>
+				</dict>
+				<key>3</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.begin.js</string>
+				</dict>
+				<key>4</key>
+				<dict>
+					<key>name</key>
+					<string>meta.embedded.expression.js source.js.embedded.tsrx support.class.component.js</string>
+				</dict>
+				<key>5</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.end.js</string>
+				</dict>
+				<key>6</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.end.js</string>
+				</dict>
+				<key>7</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.begin.js</string>
+				</dict>
+				<key>8</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.begin.js</string>
+				</dict>
+				<key>9</key>
+				<dict>
+					<key>name</key>
+					<string>meta.embedded.expression.js source.js.embedded.tsrx</string>
+					<key>patterns</key>
+					<array>
+						<dict>
+							<key>include</key>
+							<string>#expression</string>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.tag.js</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>begin</key>
+					<string>(&lt;)(\{)</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.tag.begin.js</string>
+						</dict>
+						<key>2</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.tag.begin.js</string>
+						</dict>
+					</dict>
+					<key>end</key>
+					<string>(?=[/]?&gt;)</string>
+					<key>patterns</key>
+					<array>
+						<dict>
+							<key>begin</key>
+							<string>\G</string>
+							<key>contentName</key>
+							<string>meta.embedded.expression.js source.js.embedded.tsrx</string>
+							<key>end</key>
+							<string>(\})</string>
+							<key>endCaptures</key>
+							<dict>
+								<key>1</key>
+								<dict>
+									<key>name</key>
+									<string>punctuation.definition.tag.end.js</string>
+								</dict>
+							</dict>
+							<key>patterns</key>
+							<array>
+								<dict>
+									<key>captures</key>
+									<dict>
+										<key>1</key>
+										<dict>
+											<key>name</key>
+											<string>support.class.component.js</string>
+										</dict>
+									</dict>
+									<key>match</key>
+									<string>\G\s*([[:upper:]][_$[:alnum:]]*(?:\.[_$[:alpha:]][_$[:alnum:]]*)*)\s*(?=\})</string>
+								</dict>
+								<dict>
+									<key>include</key>
+									<string>#expression</string>
+								</dict>
+							</array>
+						</dict>
+						<dict>
+							<key>include</key>
+							<string>#comment</string>
+						</dict>
+						<dict>
+							<key>include</key>
+							<string>#type-arguments</string>
+						</dict>
+						<dict>
+							<key>include</key>
+							<string>#jsx-tag-attributes</string>
+						</dict>
+					</array>
+				</dict>
+				<dict>
+					<key>begin</key>
+					<string>(&gt;)</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.tag.end.js</string>
+						</dict>
+					</dict>
+					<key>contentName</key>
+					<string>meta.jsx.children.js</string>
+					<key>end</key>
+					<string>(?=&lt;/)</string>
+					<key>patterns</key>
+					<array>
+						<dict>
+							<key>include</key>
+							<string>#jsx-children</string>
+						</dict>
+					</array>
+				</dict>
+			</array>
+		</dict>
+		<key>jsx-tag-dynamic-in-expression</key>
+		<dict>
+			<key>begin</key>
+			<string>(?&lt;!\+\+|--)(?&lt;=[({\[,?=&gt;:*]|&amp;&amp;|\|\||\?|\*\/|^await|[^\._$[:alnum:]]await|^return|[^\._$[:alnum:]]return|^default|[^\._$[:alnum:]]default|^yield|[^\._$[:alnum:]]yield|^)\s*(?=&lt;\{)</string>
+			<key>end</key>
+			<string>(?!&lt;\{)</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-dynamic</string>
+				</dict>
+			</array>
+		</dict>
 		<key>jsx-tag-fragment</key>
 		<dict>
 			<key>begin</key>
@@ -5731,7 +5926,7 @@
 		<key>jsx-text</key>
 		<dict>
 			<key>match</key>
-			<string>(?:(?![ \t]*(?://|/\*))(?![ \t]*@(?:\{|if|for|switch|try)(?![_$[:alnum:]]))(?![ \t]*@(?:case|default)(?![_$[:alnum:]])(?=[^\n{}]*:))(?![ \t]*@(?:else|empty|pending|catch)(?![_$[:alnum:]])(?=[ \t]*(?:\(|\{|[^\n{}]+\{)))(?:@(?!(?:\{|if|for|switch|try|case|default|else|empty|pending|catch)(?![_$[:alnum:]]))|[^&lt;&gt;{}&amp;@]))+</string>
+			<string>(?:(?![ \t]*/\*)(?![ \t]*@(?:\{|if|for|switch|try)(?![_$[:alnum:]]))(?![ \t]*@(?:case|default)(?![_$[:alnum:]])(?=[^\n{}]*:))(?![ \t]*@(?:else|empty|pending|catch)(?![_$[:alnum:]])(?=[ \t]*(?:\(|\{|[^\n{}]+\{)))(?:@(?!(?:\{|if|for|switch|try|case|default|else|empty|pending|catch)(?![_$[:alnum:]]))|[^&lt;&gt;{}&amp;@]))+</string>
 		</dict>
 		<key>label</key>
 		<dict>
@@ -6174,6 +6369,10 @@
 				<dict>
 					<key>include</key>
 					<string>#jsx-tag-fragment</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-dynamic-in-expression</string>
 				</dict>
 				<dict>
 					<key>include</key>
@@ -9127,6 +9326,10 @@
 				</dict>
 				<dict>
 					<key>include</key>
+					<string>#jsx-tag-dynamic</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#jsx-tag-without-attributes</string>
 				</dict>
 				<dict>
@@ -9157,7 +9360,7 @@
 			<array>
 				<dict>
 					<key>begin</key>
-					<string>^[ \t]*(/\*)</string>
+					<string>(/\*)</string>
 					<key>beginCaptures</key>
 					<dict>
 						<key>1</key>
@@ -9181,7 +9384,7 @@
 				</dict>
 				<dict>
 					<key>begin</key>
-					<string>^[ \t]*(//)</string>
+					<string>(?:^|(?&lt;=[&gt;}]))[ \t]*(//)</string>
 					<key>beginCaptures</key>
 					<dict>
 						<key>1</key>

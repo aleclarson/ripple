@@ -74,6 +74,34 @@ describe('prettier-plugin', () => {
 		expect(result).toBeWithNewline(expected);
 	});
 
+	it('formats dynamic element tags', async () => {
+		const input = `function App(props){const Child='div';return <{Child} {...props} class="card"><span>Hello</span></{Child}>}`;
+		const expected = `function App(props) {
+  const Child = "div";
+  return <{Child} {...props} class="card">
+    <span>Hello</span>
+  </{Child}>;
+}`;
+
+		const result = await format(input);
+		expect(result).toBeWithNewline(expected);
+	});
+
+	it('formats dynamic element tag expressions', async () => {
+		const input = `function App(){return <><{registry.item}/><{items[0]}/><{'section'}/><{\`article\`}/></>;}`;
+		const expected = `function App() {
+  return <>
+    <{registry.item} />
+    <{items[0]} />
+    <{"section"} />
+    <{\`article\`} />
+  </>;
+}`;
+
+		const result = await format(input);
+		expect(result).toBeWithNewline(expected);
+	});
+
 	it('formats a fragment code block with setup and template control flow', async () => {
 		const input = `function App(){return <>@{
 const items=[1,2,3];
@@ -3510,6 +3538,128 @@ function test() {
   <div>
     <span>{'child'}</span>
     /* block comment */
+  </div>
+}`;
+
+			const result = await format(expected, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should preserve template comments and blank lines from unformatted input', async () => {
+			const input = `function TodoList() @{
+<>
+  /* world 0 */
+  // hello
+  /* world 1 */
+  <ul>
+  // hello
+  /* world 2 */
+
+  </ul>
+
+  <ul>
+  // hello
+  /* world 3 */
+  // hello
+  </ul>
+  /* world 4 */
+  </>
+}`;
+
+			const expected = `function TodoList() @{
+  <>
+    /* world 0 */
+    // hello
+    /* world 1 */
+    <ul>
+      // hello
+      /* world 2 */
+    </ul>
+
+    <ul>
+      // hello
+      /* world 3 */
+      // hello
+    </ul>
+    /* world 4 */
+  </>
+}`;
+
+			const result = await format(input, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+			// Reformatting the output must be stable.
+			expect(await format(result, { singleQuote: true })).toBeWithNewline(expected);
+		});
+
+		it('should preserve block comments before a closing fragment', async () => {
+			const expected = `function App() @{
+  <>
+    <span>{'child'}</span>
+
+    /* block comment */
+  </>
+}`;
+
+			const result = await format(expected, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should preserve a blank line before a trailing block comment in elements', async () => {
+			const expected = `function App() {
+  <div>
+    <span>{'child'}</span>
+
+    /* block comment */
+  </div>
+}`;
+
+			const result = await format(expected, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should preserve a comment-only fragment body', async () => {
+			const expected = `function App() @{
+  <>
+    /* only */
+  </>
+}`;
+
+			const result = await format(expected, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should keep blank lines around comments between template siblings', async () => {
+			const expected = `function App() @{
+  <>
+    <ul></ul>
+
+    /* between */
+
+    <ul></ul>
+  </>
+}`;
+
+			const result = await format(expected, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should keep a trailing line comment after an expression container child', async () => {
+			const expected = `function App() @{
+  <>
+    {q} // hey
+    // hello
+  </>
+}`;
+
+			const result = await format(expected, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should keep a trailing block comment after an expression container child', async () => {
+			const expected = `function App() {
+  <div>
+    {x} /* note */
+    <span>{'tail'}</span>
   </div>
 }`;
 

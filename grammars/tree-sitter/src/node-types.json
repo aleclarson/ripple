@@ -2298,6 +2298,10 @@
           "named": true
         },
         {
+          "type": "jsx_expression",
+          "named": true
+        },
+        {
           "type": "jsx_member_name",
           "named": true
         },
@@ -2338,6 +2342,10 @@
           },
           {
             "type": "jsx_self_closing_element",
+            "named": true
+          },
+          {
+            "type": "jsx_statement_container",
             "named": true
           },
           {
@@ -2396,6 +2404,10 @@
           },
           {
             "type": "jsx_self_closing_element",
+            "named": true
+          },
+          {
+            "type": "jsx_statement_container",
             "named": true
           },
           {
@@ -2677,6 +2689,10 @@
             "named": true
           },
           {
+            "type": "jsx_statement_container",
+            "named": true
+          },
+          {
             "type": "jsx_switch_expression",
             "named": true
           },
@@ -2746,6 +2762,10 @@
       "types": [
         {
           "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "jsx_expression",
           "named": true
         },
         {
@@ -2862,6 +2882,10 @@
           },
           {
             "type": "jsx_self_closing_element",
+            "named": true
+          },
+          {
+            "type": "jsx_statement_container",
             "named": true
           },
           {

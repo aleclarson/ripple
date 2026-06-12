@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	runSharedCodeBlockChildrenTests,
 	runSharedCompileDiagnosticsTests,
 	runSharedCompileTests,
 	runSharedSwitchHelperHoistingTests,
@@ -24,6 +25,7 @@ runSharedSwitchHelperHoistingTests({
 	name: 'preact',
 	clientHelperShape: 'module-function',
 });
+runSharedCodeBlockChildrenTests({ compile, name: 'preact' });
 
 describe('@tsrx/preact basic', () => {
 	it('imports Suspense from preact/compat when try/pending is used', () => {
@@ -222,18 +224,19 @@ describe('@tsrx/preact basic', () => {
 		expect(code).toContain('return <div>{Date.now()}</div>;');
 	});
 
-	it('applies scoped css hashes to runtime Dynamic imports and aliases', () => {
-		const { code, cssHash } = compile(
-			`import { Dynamic } from '@tsrx/preact/dynamic';
-			const RuntimeDynamic = Dynamic;
-
-			export function App() @{
+	it('applies scoped css hashes and keeps type selectors for dynamic tags', () => {
+		const { code, css, cssHash } = compile(
+			`export function App() @{
+				const Tag = 'section';
 				<>
-					<RuntimeDynamic is="div" class="host">{'hello'}</RuntimeDynamic>
+					<{Tag} class="host">{'hello'}</{Tag}>
 
 					<style>
-						.host {
+						div {
 							color: red;
+						}
+						.host {
+							color: blue;
 						}
 					</style>
 				</>
@@ -241,7 +244,39 @@ describe('@tsrx/preact basic', () => {
 			'App.tsrx',
 		);
 
+		// The tag resolves at runtime, so it could be any element: type
+		// selectors must survive pruning and the element's class gets the hash.
 		expect(code).toContain(`class="host ${cssHash}"`);
+		expect(css).toContain(`div.${cssHash}`);
+		expect(css).toContain(`.host.${cssHash}`);
+	});
+
+	it('lowers dynamic tag syntax to a scoped component alias', () => {
+		const { code } = compile(
+			`export function App() @{
+				const Tag = 'section';
+				<{Tag} class="host">{'hello'}</{Tag}>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('const TsrxDynamic_1 = Tag;');
+		expect(code).toContain(`<TsrxDynamic_1 class="host">{'hello'}</TsrxDynamic_1>`);
+		expect(code).not.toContain('@tsrx/preact/dynamic');
+	});
+
+	it('keeps the Dynamic component shape in type-only output for dynamic tags', () => {
+		const { code } = compile_to_volar_mappings(
+			`export function App() @{
+				const Tag = 'section';
+				<{Tag} class="host">{'hello'}</{Tag}>
+			}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		expect(code).toContain(`import { Dynamic as TsrxDynamic } from '@tsrx/preact/dynamic';`);
+		expect(code).toContain(`<TsrxDynamic is={Tag} class="host"`);
 	});
 
 	it('preserves parent prop types in hook-bearing composite children', () => {

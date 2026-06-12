@@ -57,6 +57,7 @@ import {
 	is_native_tsrx_template_node,
 	is_tsrx_component_function,
 	is_style_element,
+	lower_dynamic_element,
 	simple_hash,
 	strong_hash,
 	flatten_switch_consequent,
@@ -73,6 +74,7 @@ import {
 	rewrite_lazy_member_base,
 	should_guard_regular_js_statement,
 	strip_tsrx_style_elements,
+	unwrap_single_return_iife,
 	wrap_code_block_in_iife,
 	is_code_block_function_body,
 } from '../../utils.js';
@@ -317,7 +319,7 @@ function insert_style_ref_setup_statements(body, setup) {
 }
 
 /**
- * @param {AST.TSRXJSXElement | ESTreeJSX.JSXFragment} node
+ * @param {AST.TSRXJSXElement | AST.TSRXJSXFragment} node
  * @param {TransformServerContext} context
  * @returns {AST.CallExpression}
  */
@@ -1163,6 +1165,7 @@ function transform_children(children, context) {
 		}
 		if (
 			node.type === 'VariableDeclaration' ||
+			node.type === 'BlockStatement' ||
 			node.type === 'ExpressionStatement' ||
 			node.type === 'ThrowStatement' ||
 			node.type === 'FunctionDeclaration' ||
@@ -1541,6 +1544,14 @@ const visitors = {
 
 		const callee = node.callee;
 
+		// A generated inline-component IIFE for a `@{ … }` block: after the
+		// block's statements lower into the component callback, the wrapper
+		// scope holds a lone `return _$_.tsrx_element(…)` — collapse it to
+		// the component value.
+		if (!state.to_ts && node.metadata?.tsrx_code_block_component) {
+			return unwrap_single_return_iife(/** @type {AST.Expression} */ (context.next()));
+		}
+
 		// Handle direct calls to ripple-imported functions: effect(), untrack(), RippleArray(), etc.
 		if (callee.type === 'Identifier' && is_ripple_import(callee, context)) {
 			const ripple_runtime_method = get_ripple_namespace_call_name(callee.name);
@@ -1644,14 +1655,14 @@ const visitors = {
 
 	JSXElement(node, context) {
 		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(node, context);
+			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXElement} */ (node), context);
 		}
 		return context.next();
 	},
 
 	JSXFragment(node, context) {
 		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(node, context);
+			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXFragment} */ (node), context);
 		}
 		return context.next();
 	},
@@ -1972,6 +1983,8 @@ const visitors = {
 
 	Element(node, context) {
 		const { state, visit } = context;
+
+		lower_dynamic_element(node, b.member(b.id('_$_'), 'dynamic_element'));
 
 		if (
 			is_style_element(node) &&
@@ -2403,10 +2416,15 @@ const visitors = {
 			/** @type {AST.Statement[]} */
 			const statements = [b.const(comp_id, visited_id), b.const(args_id, b.array(args))];
 
-			if (local_metadata) {
+			if (local_metadata || node.metadata?.dynamicElement === true) {
+				// Locally defined components and the internal `_$_.dynamic_element`
+				// helper are statically known; a dynamic tag's possibly-null value
+				// is handled inside the helper itself.
 				statements.push(comp_call_statement);
 			} else {
-				// imported or children
+				// Imported components and component-valued props (e.g. `children`,
+				// optional component props) may be undefined at render time —
+				// render nothing instead of crashing.
 				statements.push(b.if(comp_id, b.block([comp_call_statement])));
 			}
 

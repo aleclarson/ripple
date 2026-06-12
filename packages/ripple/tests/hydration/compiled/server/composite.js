@@ -206,3 +206,58 @@ export function LayoutWithTextAroundChildren() {
 		});
 	});
 }
+
+export function DynamicTagElement() {
+	return _$_.tsrx_element(() => {
+		const Tag = 'section';
+
+		_$_.regular_block(() => {
+			{
+				const comp = _$_.dynamic_element;
+
+				const args = [
+					{
+						is: Tag,
+						class: "host",
+						children: _$_.tsrx_element(() => {
+							return _$_.tsrx_element(() => {
+								_$_.output_push('hello');
+							});
+						})
+					}
+				];
+
+				_$_.render_component(comp, ...args);
+			}
+		});
+	});
+}
+
+export function DynamicTagComponent() {
+	return _$_.tsrx_element(() => {
+		const Comp = SingleChild;
+
+		_$_.regular_block(() => {
+			{
+				const comp = Layout;
+
+				const args = [
+					{
+						children: _$_.tsrx_element(() => {
+							return _$_.tsrx_element(() => {
+								{
+									const comp = _$_.dynamic_element;
+									const args = [{ is: Comp }];
+
+									_$_.render_component(comp, ...args);
+								}
+							});
+						})
+					}
+				];
+
+				_$_.render_component(comp, ...args);
+			}
+		});
+	});
+}

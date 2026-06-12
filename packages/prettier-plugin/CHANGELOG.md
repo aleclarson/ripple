@@ -1,5 +1,58 @@
 # @tsrx/prettier-plugin
 
+## 0.3.80
+
+### Patch Changes
+
+- [#1256](https://github.com/Ripple-TS/ripple/pull/1256)
+  [`f1a4c10`](https://github.com/Ripple-TS/ripple/commit/f1a4c10d2ad8ed604375f36f7ae3b653fe95ed1a)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Keep trailing comments on
+  `{expr}` template children. The JSX printers build the `{ … }` form inline and
+  only emitted the container's leading comments, so a trailing comment on the same
+  line (`{q} // hey`) was dropped from the formatted output. Trailing line and
+  block comments now print after the closing `}`, staying on the child's line.
+- Updated dependencies
+  [[`f001849`](https://github.com/Ripple-TS/ripple/commit/f00184940979a77cbf6873a811caaaa436feab46),
+  [`4af2591`](https://github.com/Ripple-TS/ripple/commit/4af259139d118a27d177531aa6a21435a3f3a015),
+  [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482),
+  [`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482),
+  [`f1a4c10`](https://github.com/Ripple-TS/ripple/commit/f1a4c10d2ad8ed604375f36f7ae3b653fe95ed1a)]:
+  - @tsrx/core@0.1.28
+
+## 0.3.79
+
+### Patch Changes
+
+- [#1244](https://github.com/Ripple-TS/ripple/pull/1244)
+  [`60a78c9`](https://github.com/Ripple-TS/ripple/commit/60a78c9def09eed6d706c42bc751d2d051d1d57f)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Strip `/* … */` block
+  comments from template text on all targets. The template raw-text scanner only
+  recognized line comments, so block comments in text position leaked into
+  compiled output (production templates, server output, and to_ts virtual code)
+  and, in one position, were both recorded as a comment and kept as text. Block
+  comments are now removed from `JSXText` and recorded as comments everywhere, and
+  the Prettier plugin prints them back (including before closing tags/fragments
+  and in comment-only bodies) instead of relying on the leaked text.
+- Updated dependencies
+  [[`60a78c9`](https://github.com/Ripple-TS/ripple/commit/60a78c9def09eed6d706c42bc751d2d051d1d57f)]:
+  - @tsrx/core@0.1.27
+
+## 0.3.78
+
+### Patch Changes
+
+- [#1240](https://github.com/Ripple-TS/ripple/pull/1240)
+  [`92982ee`](https://github.com/Ripple-TS/ripple/commit/92982ee5cd2e6d971b5b650ec1df70483c9716aa)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Add parser, formatter, and
+  compiler support for `<{expr}>` dynamic element tags.
+
+- Updated dependencies
+  [[`92982ee`](https://github.com/Ripple-TS/ripple/commit/92982ee5cd2e6d971b5b650ec1df70483c9716aa),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)]:
+  - @tsrx/core@0.1.26
+
 ## 0.3.77
 
 ### Patch Changes

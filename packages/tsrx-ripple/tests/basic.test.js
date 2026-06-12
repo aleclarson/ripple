@@ -18,6 +18,101 @@ runSharedComponentParamsTests({
 	name: 'ripple',
 });
 
+describe('@tsrx/ripple dynamic tag syntax', () => {
+	const source = `function App() @{
+	const Tag = 'section';
+	<{Tag} class="host">{'hello'}</{Tag}>
+}`;
+
+	it('renders dynamic tags directly through composite on the client', () => {
+		const { code } = compile(source, 'App.tsrx');
+		expect(code).not.toContain(`import { Dynamic as TsrxDynamic } from 'ripple';`);
+		expect(code).toContain('_$_.composite(() => Tag, ');
+		expect(code).toContain(`class: "host"`);
+	});
+
+	it('lowers dynamic tags through the internal dynamic_element helper on the server', () => {
+		const { code } = compile(source, 'App.tsrx', { mode: 'server' });
+		expect(code).toContain('const comp = _$_.dynamic_element;');
+		expect(code).toContain('is: Tag');
+		expect(code).not.toContain('TsrxDynamic');
+		// The helper is statically known — no `if (comp)` guard.
+		expect(code).not.toContain('if (comp)');
+	});
+
+	it('keeps scoped type selectors and applies scope hashes for dynamic tags', () => {
+		const { code, css, cssHash } = compile(
+			`function App() @{
+				const Tag = 'section';
+				<>
+					<{Tag} class="host">{'hello'}</{Tag}>
+					<style>
+						div { color: red; }
+						.host { color: blue; }
+						.unused { color: green; }
+					</style>
+				</>
+			}`,
+			'App.tsrx',
+		);
+
+		// The tag resolves at runtime, so it could be any element: type
+		// selectors must survive pruning, matching classes get the hash, and
+		// genuinely unused classes are still pruned.
+		expect(css).toContain(`div.${cssHash} { color: red; }`);
+		expect(css).toContain(`.host.${cssHash} { color: blue; }`);
+		expect(css).toContain('/* (unused) .unused { color: green; }*/');
+		expect(code).toContain(`class: '${cssHash} host'`);
+	});
+
+	it('emits valid to_ts output for dynamic tags', () => {
+		const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		expect(code).toContain(`import { Dynamic as TsrxDynamic } from 'ripple';`);
+		expect(code).toContain(`<TsrxDynamic is={Tag} class="host"`);
+		expect(code).toContain(`children={() =>`);
+		expect(code).toContain(`'hello';`);
+	});
+
+	it('does not map generated Dynamic tag names over dynamic tag props', () => {
+		const source = `function App() @{
+	const tag = 'div';
+	const className = 'test-class';
+	<{tag} class={className} id="test" data-testid="dynamic-element">{'Content'}</{tag}>
+}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		const generated_tag_offset = result.code.indexOf('<TsrxDynamic') + 1;
+		const generated_is_value_offset = result.code.indexOf('tag', result.code.indexOf('is={'));
+		const generated_class_offset = result.code.indexOf('class=', generated_tag_offset);
+		const source_class_offset = source.indexOf('class=');
+		const source_closing_tag_offset = source.indexOf('tag}', source.indexOf('</{'));
+
+		const generated_tag_mapping = result.mappings.find((mapping) => {
+			const generated_offset = mapping.generatedOffsets[0];
+			const generated_length = mapping.generatedLengths?.[0] ?? mapping.lengths[0];
+			return (
+				generated_offset <= generated_tag_offset &&
+				generated_tag_offset < generated_offset + generated_length
+			);
+		});
+		const class_mapping = find_exact_mapping(
+			result.mappings,
+			source_class_offset,
+			generated_class_offset,
+			'class'.length,
+		);
+		const closing_tag_mapping = find_exact_mapping(
+			result.mappings,
+			source_closing_tag_offset,
+			generated_is_value_offset,
+			'tag'.length,
+		);
+
+		expect(generated_tag_mapping).toBeUndefined();
+		expect(class_mapping).toBeDefined();
+		expect(closing_tag_mapping).toBeDefined();
+	});
+});
+
 describe('@tsrx/ripple Volar mappings cover declaration keywords', () => {
 	/**
 	 * @param {string} source
@@ -1201,5 +1296,43 @@ describe('@tsrx/ripple unified function and component compilation', () => {
 		expect(client.code).not.toContain('Compat(__anchor');
 		expect(server.code).not.toContain('Plain(__output');
 		expect(server.code).not.toContain('Compat(__output');
+	});
+});
+
+describe('@tsrx/ripple template comments', () => {
+	const source = `function TodoList() @{
+<>
+  /* world 0 */
+  // hello
+  /* world 1 */
+  <ul>
+  // hello
+  /* world 2 */
+
+  </ul>
+
+  <ul>
+  // hello
+  /* world 3 */
+  // hello
+  </ul>
+  /* world 4 */
+  </>
+}`;
+
+	it('keeps line and block comments out of client templates', () => {
+		const { code } = compile(source, 'App.tsrx');
+		expect(code).not.toMatch(/world|hello/);
+		expect(code).toContain('<ul></ul><ul></ul>');
+	});
+
+	it('keeps line and block comments out of server output', () => {
+		const { code } = compile(source, 'App.tsrx', { mode: 'server' });
+		expect(code).not.toMatch(/world|hello/);
+	});
+
+	it('keeps template comments out of to_ts output', () => {
+		const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		expect(code).not.toMatch(/world|hello/);
 	});
 });

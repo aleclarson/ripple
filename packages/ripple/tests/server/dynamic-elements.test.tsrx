@@ -1,11 +1,11 @@
 import type { DynamicProps, PropsWithExtras, TSRXElement } from 'ripple';
-import { createRefKey, Dynamic, track } from 'ripple';
+import { createRefKey, track } from 'ripple';
 
 describe('server dynamic DOM elements', () => {
 	it('renders static dynamic element', async () => {
 		function App() @{
 			let tag = track('div');
-			<Dynamic is={tag}>{'Hello World'}</Dynamic>
+			<{tag}>{'Hello World'}</{tag}>
 		}
 
 		const { body } = await render(App);
@@ -17,7 +17,7 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let obj = { tag: track('div') };
 			let tag = obj.tag;
-			<Dynamic is={tag}>{'Hello World'}</Dynamic>
+			<{tag}>{'Hello World'}</{tag}>
 		}
 
 		const { body } = await render(App);
@@ -36,7 +36,7 @@ describe('server dynamic DOM elements', () => {
 		}
 
 		function App() @{
-			<Dynamic is={Child} label="child" class="yo" />
+			<{Child} label="child" class="yo" />
 		}
 
 		const { body } = await render(App);
@@ -48,7 +48,7 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let obj = track({ tag: track('div') });
 			let tag = obj.value.tag;
-			<Dynamic is={tag}>{'Hello World'}</Dynamic>
+			<{tag}>{'Hello World'}</{tag}>
 		}
 
 		const { body } = await render(App);
@@ -62,7 +62,7 @@ describe('server dynamic DOM elements', () => {
 			function App() @{
 				let obj = track({ tag: track('div') });
 				let tag = obj.value['tag'];
-				<Dynamic is={tag}>{'Hello World'}</Dynamic>
+				<{tag}>{'Hello World'}</{tag}>
 			}
 
 			const { body } = await render(App);
@@ -74,7 +74,7 @@ describe('server dynamic DOM elements', () => {
 	it('renders self-closing dynamic element', async () => {
 		function App() @{
 			let tag = track('input');
-			<Dynamic is={tag} type="text" value="test" />
+			<{tag} type="text" value="test" />
 		}
 
 		const { body } = await render(App);
@@ -86,12 +86,7 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let tag = track('div');
 			let &[className] = track('test-class');
-			<Dynamic
-				is={tag}
-				class={className}
-				id="test"
-				data-testid="dynamic-element"
-			>{'Content'}</Dynamic>
+			<{tag} class={className} id="test" data-testid="dynamic-element">{'Content'}</{tag}>
 		}
 		const { body } = await render(App);
 		const { document } = parseHtml(body);
@@ -108,9 +103,9 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let outerTag = track('div');
 			let innerTag = track('span');
-			<Dynamic is={outerTag} class="outer">
-				<Dynamic is={innerTag} class="inner">{'Nested content'}</Dynamic>
-			</Dynamic>
+			<{outerTag} class="outer">
+				<{innerTag} class="inner">{'Nested content'}</{innerTag}>
+			</{outerTag}>
 		}
 		const { body } = await render(App);
 		const { document } = parseHtml(body);
@@ -128,10 +123,9 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let tag = track('div');
 			let &[active] = track(true);
-			<Dynamic
-				is={tag}
+			<{tag}
 				class={{ active: active, 'dynamic-element': true }}
-			>{'Element with class object'}</Dynamic>
+			>{'Element with class object'}</{tag}>
 		}
 
 		const { body } = await render(App);
@@ -146,14 +140,13 @@ describe('server dynamic DOM elements', () => {
 	it('handles dynamic element with style object', async () => {
 		function App() @{
 			let tag = track('span');
-			<Dynamic
-				is={tag}
+			<{tag}
 				style={{
 					color: 'red',
 					fontSize: '16px',
 					fontWeight: 'bold',
 				}}
-			>{'Styled dynamic element'}</Dynamic>
+			>{'Styled dynamic element'}</{tag}>
 		}
 
 		const { body } = await render(App);
@@ -174,11 +167,7 @@ describe('server dynamic DOM elements', () => {
 				'data-testid': 'spread-test',
 				class: 'spread-class',
 			};
-			<Dynamic
-				is={tag}
-				{...attrs}
-				data-extra="additional"
-			>{'Element with spread attributes'}</Dynamic>
+			<{tag} {...attrs} data-extra="additional">{'Element with spread attributes'}</{tag}>
 		}
 		const { body } = await render(App);
 		const { document } = parseHtml(body);
@@ -196,13 +185,12 @@ describe('server dynamic DOM elements', () => {
 
 		function App() @{
 			let tag = track('article');
-			<Dynamic
-				is={tag}
+			<{tag}
 				ref={(node: HTMLElement) => {
 					capturedElement = node;
 				}}
 				id="ref-test"
-			>{'Element with ref'}</Dynamic>
+			>{'Element with ref'}</{tag}>
 		}
 
 		const { body } = await render(App);
@@ -230,7 +218,7 @@ describe('server dynamic DOM elements', () => {
 				class: 'ref-element',
 				[createRefKey()]: elementRef,
 			};
-			<Dynamic is={tag} {...dynamicProps}>{'Element with spread ref'}</Dynamic>
+			<{tag} {...dynamicProps}>{'Element with spread ref'}</{tag}>
 		}
 
 		const { body } = await render(App);
@@ -249,7 +237,7 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let tag = track('div');
 			<>
-				<Dynamic is={tag} class="test-class">{'Dynamic element'}</Dynamic>
+				<{tag} class="test-class">{'Dynamic element'}</{tag}>
 				<style>
 					.test-class {
 						color: red;
@@ -277,7 +265,7 @@ describe('server dynamic DOM elements', () => {
 		}>) @{
 			const tag = track('button');
 			<>
-				<Dynamic is={tag} {...rest}>{rest.class}</Dynamic>
+				<{tag} {...rest}>{rest.class}</{tag}>
 				<style>
 					.even {
 						background-color: green;
@@ -314,9 +302,9 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let tag = track('div');
 			<>
-				<Dynamic is={tag} class="scoped">
+				<{tag} class="scoped">
 					<p>{'Scoped dynamic element'}</p>
-				</Dynamic>
+				</{tag}>
 				<style>
 					.scoped {
 						color: blue;
@@ -343,9 +331,9 @@ describe('server dynamic DOM elements', () => {
 			function App() @{
 				let tag = track('div');
 				<>
-					<Dynamic is={tag} class="scoped">
+					<{tag} class="scoped">
 						<p>{'Scoped dynamic element'}</p>
-					</Dynamic>
+					</{tag}>
 					<style>
 						div {
 							color: blue;
@@ -382,10 +370,10 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let tag = track('div');
 			<>
-				<Dynamic is={tag} class="scoped">
+				<{tag} class="scoped">
 					<p>{'Scoped dynamic element'}</p>
 					<Child />
-				</Dynamic>
+				</{tag}>
 				<style>
 					div {
 						color: blue;
@@ -430,7 +418,7 @@ describe('server dynamic DOM elements', () => {
 		function App() @{
 			let tag = track(() => Child);
 			<>
-				<Dynamic is={tag} />
+				<{tag} />
 				<style>
 					.child {
 						color: red;

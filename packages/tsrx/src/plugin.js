@@ -55,25 +55,23 @@ const CharCode = Object.freeze({
 	closeBrace: 125,
 });
 
-/**
- * Keywords after which a `/` begins a regex literal rather than division, used
- * by the look-ahead scanners to track expression position in script content.
- */
-const REGEX_PRECEDING_KEYWORDS = new Set([
-	'return',
-	'typeof',
-	'instanceof',
-	'in',
-	'of',
-	'new',
-	'delete',
-	'void',
-	'do',
-	'else',
-	'yield',
-	'await',
-	'case',
-	'throw',
+// Transparent wrappers to look through when validating a dynamic tag
+// expression (`<{expr}>`), and syntax that disqualifies one outright.
+const DYNAMIC_TAG_WRAPPER_TYPES = new Set([
+	'TSAsExpression',
+	'TSTypeAssertion',
+	'TSNonNullExpression',
+	'ParenthesizedExpression',
+	'ChainExpression',
+]);
+const DYNAMIC_TAG_DISALLOWED_TYPES = new Set([
+	'SpreadElement',
+	'ExperimentalSpreadProperty',
+	'ObjectExpression',
+	'ArrayExpression',
+	'CallExpression',
+	'NewExpression',
+	'TaggedTemplateExpression',
 ]);
 
 /** @type {WeakMap<Record<string, boolean>, Map<string, number>>} */
@@ -549,7 +547,7 @@ export function TSRXPlugin(config) {
 				let index = start;
 				let value = '';
 				while (index < this.input.length) {
-					if (this.#isTemplateLineCommentStart(index)) {
+					if (this.#isTemplateLineCommentStart(index, start)) {
 						const comment_start = index;
 						const comment_start_loc = acorn.getLineInfo(this.input, comment_start);
 						index += 2;
@@ -577,11 +575,32 @@ export function TSRXPlugin(config) {
 						}
 						continue;
 					}
+					if (this.#isTemplateBlockCommentStart(index)) {
+						const comment_start = index;
+						const comment_start_loc = acorn.getLineInfo(this.input, comment_start);
+						const close = this.input.indexOf('*/', index + 2);
+						const value_end = close === -1 ? this.input.length : close;
+						index = close === -1 ? this.input.length : close + 2;
+						if (this.options.onComment && comment_start >= token_end) {
+							const comment_end_loc = acorn.getLineInfo(this.input, index);
+							this.options.onComment(
+								true,
+								this.input.slice(comment_start + 2, value_end),
+								comment_start,
+								index,
+								new acorn.Position(comment_start_loc.line, comment_start_loc.column),
+								new acorn.Position(comment_end_loc.line, comment_end_loc.column),
+								/** @type {any} */ (null),
+							);
+						}
+						continue;
+					}
 					const ch = this.input.charCodeAt(index);
 					if (
 						ch === CharCode.lessThan ||
 						ch === CharCode.openBrace ||
 						ch === CharCode.closeBrace ||
+						this.#isCodeBlockStart(index) ||
 						this.#isJSXControlFlowDirectiveAt(index)
 					) {
 						break;
@@ -943,13 +962,41 @@ export function TSRXPlugin(config) {
 			}
 
 			/**
+			 * A `//` is a comment only when nothing but whitespace precedes it on its
+			 * line, or — given `run_start`, the position where the current text run
+			 * began (right after a sibling element, code block, or expression
+			 * container) — since that boundary. Once real text has begun, `//` is
+			 * literal so inline text like `https://…` stays text.
+			 * @param {number} index
+			 * @param {number} [run_start]
+			 */
+			#isTemplateLineCommentStart(index, run_start = -1) {
+				if (
+					this.input.charCodeAt(index) !== CharCode.slash ||
+					this.input.charCodeAt(index + 1) !== CharCode.slash
+				) {
+					return false;
+				}
+				if (this.#isLineStartPosition(index)) return true;
+				if (run_start < 0) return false;
+				for (let i = index - 1; i >= run_start; i--) {
+					const ch = this.input.charCodeAt(i);
+					if (ch === CharCode.lineFeed || ch === CharCode.carriageReturn) return false;
+					if (ch !== CharCode.space && ch !== CharCode.tab) return false;
+				}
+				return true;
+			}
+
+			/**
+			 * Unlike `//` (which is only a comment at line-start so inline text like
+			 * `https://…` stays text), `/*` starts a comment anywhere in template
+			 * text, matching `jsx_readToken`.
 			 * @param {number} index
 			 */
-			#isTemplateLineCommentStart(index) {
+			#isTemplateBlockCommentStart(index) {
 				return (
 					this.input.charCodeAt(index) === CharCode.slash &&
-					this.input.charCodeAt(index + 1) === CharCode.slash &&
-					this.#isLineStartPosition(index)
+					this.input.charCodeAt(index + 1) === CharCode.asterisk
 				);
 			}
 
@@ -965,7 +1012,8 @@ export function TSRXPlugin(config) {
 						ch === CharCode.openBrace ||
 						ch === CharCode.closeBrace ||
 						this.#isJSXControlFlowDirectiveAt(index) ||
-						this.#isTemplateLineCommentStart(index)
+						this.#isTemplateLineCommentStart(index, start) ||
+						this.#isTemplateBlockCommentStart(index)
 					) {
 						break;
 					}
@@ -1163,6 +1211,7 @@ export function TSRXPlugin(config) {
 					if (next === CharCode.slash) return false;
 					const tagLike =
 						next === CharCode.greaterThan ||
+						next === CharCode.openBrace ||
 						next === CharCode.at ||
 						next === CharCode.dollar ||
 						next === CharCode.underscore ||
@@ -1985,9 +2034,10 @@ export function TSRXPlugin(config) {
 					);
 					const closingEnd = closingStart + '</style>'.length;
 					const closingEndInfo = acorn.getLineInfo(this.input, closingEnd);
-					const closingElement = /** @type {ESTreeJSX.JSXClosingElement & AST.NodeWithLocation} */ (
-						this.startNodeAt(closingStart, closingStartLoc)
-					);
+					const closingElement =
+						/** @type {ESTreeJSX.TSRXJSXClosingElement & AST.NodeWithLocation} */ (
+							this.startNodeAt(closingStart, closingStartLoc)
+						);
 					closingElement.name = name;
 					this.finishNodeAt(
 						closingElement,
@@ -2581,8 +2631,68 @@ export function TSRXPlugin(config) {
 				} else if (node.type === 'MemberExpression' || node.type === 'JSXMemberExpression') {
 					// For components like <Foo.Bar>, return "Foo.Bar"
 					return this.getElementName(node.object) + '.' + this.getElementName(node.property);
+				} else if (this.#isDynamicJSXElementName(node)) {
+					// Dynamic tags (`<{Tag}>`) name by expression source. The braces keep
+					// them from colliding with static tag names ('style', 'head', ...) and
+					// read as source syntax in error messages (`</{Tag}>`).
+					const expression = /** @type {AST.Expression} */ (/** @type {any} */ (node).expression);
+					return `{${this.input.slice(expression.start, expression.end).trim()}}`;
 				}
 				return null;
+			}
+
+			/**
+			 * @param {any} name
+			 * @returns {boolean}
+			 */
+			#isDynamicJSXElementName(name) {
+				return !!(name && name.type === 'JSXExpressionContainer' && name.isDynamic === true);
+			}
+
+			/**
+			 * Dynamic tag expressions must be able to resolve to an element name:
+			 * an identifier, member access, static string, or a runtime expression
+			 * composed of those. Constructed values (calls, spreads, concatenation,
+			 * interpolation, object/array literals) and static non-string literals
+			 * can never be valid tag names.
+			 * @param {any} expression
+			 * @returns {boolean}
+			 */
+			#isValidDynamicTagExpression(expression) {
+				let node = expression;
+				while (node && DYNAMIC_TAG_WRAPPER_TYPES.has(node.type)) {
+					node = node.expression;
+				}
+				if (!node || node.type?.startsWith?.('JSX')) return false;
+				if (node.type === 'Identifier') return node.name !== 'undefined';
+				if (node.type === 'Literal') return typeof node.value === 'string';
+				if (node.type === 'UnaryExpression' && node.operator === 'void') return false;
+				return !this.#containsDisallowedDynamicTagSyntax(node);
+			}
+
+			/**
+			 * @param {any} node
+			 * @param {Set<any>} [seen]
+			 * @returns {boolean}
+			 */
+			#containsDisallowedDynamicTagSyntax(node, seen = new Set()) {
+				if (!node || typeof node !== 'object' || seen.has(node)) return false;
+				seen.add(node);
+				if (Array.isArray(node)) {
+					return node.some((child) => this.#containsDisallowedDynamicTagSyntax(child, seen));
+				}
+				if (
+					DYNAMIC_TAG_DISALLOWED_TYPES.has(node.type) ||
+					(node.type === 'TemplateLiteral' && node.expressions.length > 0) ||
+					(node.type === 'BinaryExpression' && node.operator === '+')
+				) {
+					return true;
+				}
+				for (const key of Object.keys(node)) {
+					if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') continue;
+					if (this.#containsDisallowedDynamicTagSyntax(node[key], seen)) return true;
+				}
+				return false;
 			}
 
 			/**
@@ -2620,7 +2730,10 @@ export function TSRXPlugin(config) {
 					this.pos++;
 					return this.finishToken(tt.arrow);
 				}
-				if (code === CharCode.lessThan) {
+				if (code === CharCode.lessThan && this.type !== tstt.jsxText) {
+					// After a JSX text token a `<` can only open a tag; without this guard
+					// text ending in an identifier character (`hello<div>`) would read as
+					// the start of a type argument list (`hello<T>`).
 					const next = this.input.charCodeAt(this.pos + 1);
 					if (
 						next !== CharCode.slash &&
@@ -2639,6 +2752,7 @@ export function TSRXPlugin(config) {
 					const isTagLikeAfterLt =
 						next === CharCode.slash ||
 						next === CharCode.greaterThan ||
+						next === CharCode.openBrace ||
 						next === CharCode.at ||
 						next === CharCode.dollar ||
 						next === CharCode.underscore ||
@@ -2759,6 +2873,7 @@ export function TSRXPlugin(config) {
 						!isWhitespaceAfterLt &&
 						(nextChar === CharCode.slash ||
 							nextChar === CharCode.greaterThan ||
+							nextChar === CharCode.openBrace ||
 							nextChar === CharCode.at ||
 							nextChar === CharCode.dollar ||
 							nextChar === CharCode.underscore ||
@@ -3444,12 +3559,28 @@ export function TSRXPlugin(config) {
 				return this.finishNode(node, 'JSXIdentifier');
 			}
 
+			#parseJSXDynamicElementName() {
+				const container = this.jsx_parseExpressionContainer();
+				container.isDynamic = true;
+				if (!this.#isValidDynamicTagExpression(container.expression)) {
+					this.raise(
+						/** @type {number} */ (container.expression?.start ?? container.start),
+						'Dynamic element names must be an identifier, member expression, static string, or runtime expression; calls, spreads, string concatenation, string interpolation, and static null, undefined, boolean, number, object, and array literals are not valid tag names.',
+					);
+				}
+				return container;
+			}
+
 			/**
 			 * @type {Parse.Parser['jsx_parseElementName']}
 			 */
 			jsx_parseElementName() {
 				if (this.type === tstt.jsxTagEnd) {
 					return '';
+				}
+
+				if (this.type === tt.braceL) {
+					return this.#parseJSXDynamicElementName();
 				}
 
 				let node = this.jsx_parseNamespacedName();
@@ -3983,7 +4114,10 @@ export function TSRXPlugin(config) {
 				);
 				node.attributes = [];
 				const nodeName = this.jsx_parseElementName();
-				if (nodeName) node.name = nodeName;
+				if (nodeName) node.name = /** @type {any} */ (nodeName);
+				if (this.#isDynamicJSXElementName(nodeName)) {
+					/** @type {any} */ (node).isDynamic = true;
+				}
 				if (this.match(tt.relational) || this.match(tt.bitShift)) {
 					const typeArguments = /** @type {any} */ (this).tsTryParseAndCatch(() =>
 						/** @type {any} */ (this).tsParseTypeArgumentsInExpression(),
@@ -4003,6 +4137,9 @@ export function TSRXPlugin(config) {
 							this.getElementName(nodeName) === 'style' ? 'JSXStyleElement' : 'JSXElement';
 						/** @type {any} */ (opening_template_node).openingElement = node;
 						/** @type {any} */ (opening_template_node).closingElement = null;
+						if (this.#isDynamicJSXElementName(nodeName)) {
+							/** @type {any} */ (opening_template_node).isDynamic = true;
+						}
 					} else {
 						/** @type {any} */ (opening_template_node).type = 'JSXFragment';
 						/** @type {any} */ (opening_template_node).openingFragment =
@@ -4076,6 +4213,7 @@ export function TSRXPlugin(config) {
 					this.#openingNativeTemplateNode = previous_opening_native_template_node;
 				}
 				const tag_name = open.name ? this.getElementName(open.name) : null;
+				const is_dynamic = this.#isDynamicJSXElementName(open.name);
 				const is_style = tag_name === 'style';
 				const inside_head = this.#path.findLast((n) => this.#isNativeElementNamed(n, 'head'));
 
@@ -4103,12 +4241,17 @@ export function TSRXPlugin(config) {
 				} else {
 					if (is_style) {
 						/** @type {AST.JSXStyleElement} */ (node).type = 'JSXStyleElement';
-						/** @type {AST.JSXStyleElement} */ (node).openingElement = open;
-						/** @type {AST.JSXStyleElement} */ (node).closingElement = null;
+						/** @type {AST.JSXStyleElement} */ (node).openingElement =
+							/** @type {AST.JSXStyleElement['openingElement']} */ (open);
+						/** @type {AST.JSXStyleElement} */ (node).closingElement =
+							/** @type {AST.JSXStyleElement['closingElement']} */ (null);
 					} else {
 						/** @type {ESTreeJSX.JSXElement} */ (node).type = 'JSXElement';
 						/** @type {ESTreeJSX.JSXElement} */ (node).openingElement = open;
 						/** @type {ESTreeJSX.JSXElement} */ (node).closingElement = null;
+						if (is_dynamic) {
+							/** @type {any} */ (node).isDynamic = true;
+						}
 					}
 				}
 
@@ -4314,6 +4457,9 @@ export function TSRXPlugin(config) {
 							);
 						} finally {
 							this.#closingNativeTemplateNode = false;
+						}
+						if (this.#isDynamicJSXElementName(closingElement.name)) {
+							/** @type {any} */ (closingElement).isDynamic = true;
 						}
 						this.exprAllowed = false;
 

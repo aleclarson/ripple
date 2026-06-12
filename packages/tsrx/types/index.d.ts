@@ -84,7 +84,7 @@ interface BaseNodeMetaData {
 	parenthesized?: boolean;
 	native_tsrx?: boolean;
 	native_tsrx_template_block?: boolean;
-	runtime_dynamic_element?: boolean;
+	dynamicElement?: boolean;
 	templateMode?: 'script' | 'template';
 	script_only?: boolean;
 	tsrxDirective?: 'if' | 'for' | 'switch' | 'try';
@@ -171,6 +171,17 @@ declare module 'estree' {
 	interface SimpleCallExpression {
 		metadata: BaseNodeMetaData & {
 			hash?: string;
+			/**
+			 * A generated `(() => @{ … })()` inline-component IIFE for a code
+			 * block; collapsible once the block's statements lower into the
+			 * component callback.
+			 */
+			tsrx_code_block_component?: boolean;
+			/**
+			 * A generated zero-argument scope IIFE for a `@{ … }` code-block
+			 * chain level; runs synchronously inside its `with_scope` wrapper.
+			 */
+			tsrx_code_block_scope?: boolean;
 		};
 	}
 
@@ -255,6 +266,9 @@ declare module 'estree' {
 		TsrxFragment: TsrxFragment;
 		Text: Text;
 		TSRXJSXElement: TSRXJSXElement;
+		TSRXJSXFragment: TSRXJSXFragment;
+		TSRXJSXOpeningElement: ESTreeJSX.TSRXJSXOpeningElement;
+		TSRXJSXClosingElement: ESTreeJSX.TSRXJSXClosingElement;
 		TSRXExpression: TSRXExpression;
 		Attribute: Attribute;
 		SpreadAttribute: SpreadAttribute;
@@ -301,13 +315,14 @@ declare module 'estree' {
 
 	interface Element extends AST.BaseExpression {
 		type: 'Element';
-		id: AST.Identifier | AST.MemberExpression | AST.Literal;
+		id: AST.Expression;
 		attributes: Array<Attribute | SpreadAttribute>;
 		children: AST.Node[];
 		openingElement: ESTreeJSX.JSXOpeningElement;
 		closingElement: ESTreeJSX.JSXClosingElement | null;
 		selfClosing?: boolean;
 		unclosed?: boolean;
+		isDynamic?: boolean;
 		css?: string;
 		metadata: BaseNodeMetaData;
 		start: number;
@@ -321,7 +336,14 @@ declare module 'estree' {
 		closingElement?: ESTreeJSX.JSXClosingFragment | null;
 		selfClosing?: boolean;
 		attributes?: Array<Attribute | SpreadAttribute>;
-		metadata: BaseNodeMetaData;
+		metadata: BaseNodeMetaData & {
+			/**
+			 * A synthetic wrapper for a nested code-block render chain
+			 * (`@{ @{ … } }`), so render-slot consumers see a template node;
+			 * template-children lowering unwraps it.
+			 */
+			tsrx_code_block_chain?: boolean;
+		};
 		start: number;
 		end: number;
 	}
@@ -347,7 +369,11 @@ declare module 'estree' {
 		| AST.JSXCodeBlock;
 
 	interface TSRXJSXElement
-		extends Omit<ESTreeJSX.JSXElement, 'children'>, AST.NodeWithMaybeComments {
+		extends
+			Omit<ESTreeJSX.JSXElement, 'children' | 'openingElement' | 'closingElement'>,
+			AST.NodeWithMaybeComments {
+		openingElement: ESTreeJSX.TSRXJSXOpeningElement;
+		closingElement: ESTreeJSX.TSRXJSXClosingElement | null;
 		children: TSRXJSXChild[];
 		metadata: BaseNodeMetaData & {
 			ts_name?: string;
@@ -367,13 +393,10 @@ declare module 'estree' {
 		innerComments?: AST.Comment[] | undefined;
 	}
 
-	interface JSXStyleElement extends AST.BaseExpression {
+	interface JSXStyleElement extends Omit<AST.TSRXJSXElement, 'type' | 'children'> {
 		type: 'JSXStyleElement';
-		openingElement: ESTreeJSX.JSXOpeningElement;
-		closingElement: ESTreeJSX.JSXClosingElement | null;
 		children: AST.CSS.StyleSheet[];
 		css?: string;
-		metadata: BaseNodeMetaData;
 		unclosed?: boolean;
 	}
 
@@ -521,7 +544,7 @@ declare module 'estree' {
 
 	type TSRXStatement = AST.Statement | TSESTree.Statement;
 
-	type NodeWithChildren = TSRXJSXElement | TSRXJSXFragment | JSXStyleElement;
+	type NodeWithChildren = TSRXJSXElement | TSRXJSXFragment | JSXStyleElement | ESTreeJSX.JSXElement;
 
 	export namespace CSS {
 		export interface BaseNode extends AST.NodeWithMaybeComments {
@@ -729,6 +752,7 @@ declare module 'estree-jsx' {
 	interface JSXExpressionContainer {
 		text?: boolean;
 		style?: boolean;
+		isDynamic?: boolean;
 	}
 
 	interface JSXMemberExpression {
@@ -736,11 +760,11 @@ declare module 'estree-jsx' {
 	}
 
 	interface TSRXJSXOpeningElement extends Omit<JSXOpeningElement, 'name'> {
-		name: AST.MemberExpression | JSXIdentifier | JSXNamespacedName;
+		name: AST.MemberExpression | JSXIdentifier | JSXNamespacedName | JSXExpressionContainer;
 	}
 
 	interface TSRXJSXClosingElement extends Omit<JSXClosingElement, 'name'> {
-		name: AST.MemberExpression | JSXIdentifier | JSXNamespacedName;
+		name: AST.MemberExpression | JSXIdentifier | JSXNamespacedName | JSXExpressionContainer;
 	}
 
 	interface ExpressionMap {

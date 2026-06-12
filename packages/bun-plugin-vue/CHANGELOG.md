@@ -1,5 +1,31 @@
 # @tsrx/bun-plugin-vue
 
+## 0.0.32
+
+### Patch Changes
+
+- Updated dependencies
+  [[`87afc5d`](https://github.com/Ripple-TS/ripple/commit/87afc5d3f4c73e604cd245865e27d29e40435482)]:
+  - @tsrx/vue@0.1.28
+
+## 0.0.31
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @tsrx/vue@0.1.27
+
+## 0.0.30
+
+### Patch Changes
+
+- Updated dependencies
+  [[`92982ee`](https://github.com/Ripple-TS/ripple/commit/92982ee5cd2e6d971b5b650ec1df70483c9716aa),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9),
+  [`b826234`](https://github.com/Ripple-TS/ripple/commit/b8262342111a977ba5a0d44086154e386b06f4b9)]:
+  - @tsrx/vue@0.1.26
+
 ## 0.0.29
 
 ### Patch Changes
