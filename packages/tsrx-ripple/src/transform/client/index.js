@@ -12,7 +12,7 @@
 	Binding,
 }	from '../../../types/index';
 @import { CompileError } from '../../../types/index';
-@import { RequiredPresent } from '../../helpers';
+@import { RequiredPresent } from '@tsrx/core/types/helpers';
  */
 
 /**
@@ -48,12 +48,15 @@ import {
 	getStyleElementStylesheet,
 	getOriginalEventName,
 	isEventAttribute,
+	isEmptyJsxFragment as is_empty_jsx_fragment,
 	isInsideComponent as is_inside_component,
 	normalizeEventName,
 	shouldPreserveComment,
 	formatComment,
 	setLocation,
 	createElementRefTargetTypeForName as create_element_ref_target_type_for_name,
+	wrapEdgeWhitespace as wrap_edge_whitespace,
+	isTemplateValuePosition,
 } from '@tsrx/core';
 const b = builders;
 import {
@@ -84,12 +87,10 @@ import {
 	strip_class_typescript_syntax,
 	strip_typescript_expression_wrappers,
 	jsx_to_ripple_node,
-	tracked_get,
 	build_index_read,
 	build_index_write,
 	build_index_update,
 	create_native_tsrx_render_function,
-	generate_local_name,
 	get_native_tsrx_function_body,
 	get_indexed_reactive_target,
 	is_native_tsrx_function_node,
@@ -101,7 +102,6 @@ import {
 	dynamic_element_import_local,
 	lower_dynamic_element,
 	rewrite_lazy_member_base,
-	should_guard_regular_js_statement,
 	strip_tsrx_style_elements,
 	wrap_code_block_in_iife,
 } from '../../utils.js';
@@ -242,7 +242,7 @@ function build_style_class_map_expression(node, context) {
 	}
 
 	analyzeCss(stylesheet);
-	context.state.stylesheets.push(prepareStylesheetForRender(stylesheet));
+	context.state.stylesheets.push(prepareStylesheetForRender(stylesheet, true));
 	const class_map = createStyleClassMapFromStylesheet(stylesheet);
 	if (!context.state.to_ts) {
 		return class_map;
@@ -887,7 +887,14 @@ function transform_native_tsrx_function(node, context) {
 		state: {
 			...context.state,
 			flush_node: null,
-			component: is_synthetic_children ? context.state.component : node,
+			// A synthetic children render arrow is itself a tsrx_element render
+			// context, so it inherits the enclosing component. When the enclosing
+			// function is a `function C() { return <jsx> }` component (transformed
+			// via the generic function path, which never sets `component`), there is
+			// no component to inherit. Fall back to this arrow as the component
+			// boundary so directive-branch elements in statement position are not
+			// misread as out-of-component template statements and double-wrapped.
+			component: is_synthetic_children ? (context.state.component ?? node) : node,
 			metadata,
 			scope: component_scope,
 			is_tsrx_element: false,
@@ -1959,15 +1966,15 @@ const visitors = {
 	},
 
 	JSXCodeBlock(node, context) {
-		// A `@{ … }` block that produces render output but sits in a value
-		// position (assigned to a variable, returned, …) is wrapped in an
-		// immediately-invoked arrow so it flows through the function-body path
-		// (`transform_native_tsrx_function`) rather than reaching the printer as a
-		// raw `JSXCodeBlock`. Applies to runtime and `to_ts` output alike. The
-		// function-body guard keeps `transform_native_tsrx_function`'s own visit of
-		// the body (in `to_ts`) from re-wrapping it endlessly.
+		// A `@{ … }` block that sits in a value position (assigned to a variable,
+		// returned, …) is wrapped in an immediately-invoked arrow so it flows
+		// through the function-body path (`transform_native_tsrx_function`) rather
+		// than reaching the printer as a raw `JSXCodeBlock` — a code-only block
+		// would otherwise print as an invalid `{ … }` "expression". Applies to
+		// runtime and `to_ts` output alike. The function-body guard keeps
+		// `transform_native_tsrx_function`'s own visit of the body (in `to_ts`)
+		// from re-wrapping it endlessly.
 		if (
-			node.render != null &&
 			!is_code_block_function_body(node, context.path.at(-1)) &&
 			is_native_tsrx_value_position(context.path)
 		) {
@@ -2032,7 +2039,23 @@ const visitors = {
 
 		// to_ts mode: produce a JSX fragment from native TSRX children.
 		if (state.to_ts) {
-			return build_tsrx_to_ts_expression(node, context);
+			const expression = build_tsrx_to_ts_expression(node, context);
+			// Keep an AUTHORED `<> … </>` verbatim in EVERY position — a value slot
+			// (`const v = <>{1}</>`), render output (`return <>{x}</>`, `() => <>{x}</>`),
+			// or a JSX-child `{ … }` container (`<div>{<>{x}</>}</div>`) — matching the JS
+			// targets; collapsing it to a bare child risks the wrong output (a fragment is
+			// always truthy, and the type changes). A fragment COMBINED into a surrounding
+			// expression is likewise kept, including the compiler-generated wrapper around a
+			// directive used as a `||`/`&&` operand (`@if (…) { … } || 'x'` → `<>{…}</> || 'x'`):
+			// the wrapper is a truthy value so the fallback stays dead, exactly as the JS
+			// targets / runtime treat it (the type view must agree). A directive as the SOLE
+			// value of a slot (`const v = @if (…)`) still collapses — `is_combined_expression_position`
+			// excludes those slots — and a nested authored fragment collapses outer→inner via
+			// `wrap_to_ts_value_in_fragment`'s short-circuit.
+			return is_authored_native_fragment(node) ||
+				is_combined_expression_position(context.path, node)
+				? wrap_to_ts_value_in_fragment(expression, node)
+				: expression;
 		}
 
 		const children_filtered = node.children.filter((child) => {
@@ -3203,53 +3226,6 @@ const visitors = {
 		const id = context.state.flush_node?.();
 		const statements = [];
 
-		if (node.metadata?.lone_return && context.state.return_flags) {
-			const consequent_body =
-				node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
-			const ret = /** @type {AST.ReturnStatement} */ (consequent_body[0]);
-			const info = context.state.return_flags.get(ret);
-
-			if (info) {
-				/** @type {AST.Statement[]} */
-				const callback_body = [];
-
-				if (info.tracked) {
-					callback_body.push(b.stmt(b.call('_$_.set', b.id(info.name), b.false)));
-					callback_body.push(
-						b.if(
-							/** @type {AST.Expression} */ (
-								context.visit(node.test, {
-									...context.state,
-									metadata: { ...context.state.metadata },
-								})
-							),
-							b.stmt(b.call('_$_.set', b.id(info.name), b.true)),
-						),
-					);
-				} else {
-					callback_body.push(b.stmt(b.assignment('=', b.id(info.name), b.false)));
-					callback_body.push(
-						b.if(
-							/** @type {AST.Expression} */ (
-								context.visit(node.test, {
-									...context.state,
-									metadata: { ...context.state.metadata },
-								})
-							),
-							b.stmt(b.assignment('=', b.id(info.name), b.true)),
-						),
-					);
-				}
-
-				statements.push(
-					b.stmt(b.call('_$_.if', id, b.arrow([b.id('__render')], b.block(callback_body)))),
-				);
-
-				context.state.init?.push(b.block(statements));
-				return;
-			}
-		}
-
 		const consequent_scope =
 			/** @type {ScopeInterface} */ (context.state.scopes.get(node.consequent)) ||
 			context.state.scope;
@@ -3289,19 +3265,6 @@ const visitors = {
 
 		/** @type {AST.Statement[]} */
 		const callback_body = [];
-
-		if (node.metadata?.has_return && context.state.return_flags) {
-			for (const info of get_unique_return_infos(
-				node.metadata.returns || [],
-				context.state.return_flags,
-			)) {
-				if (info.tracked) {
-					callback_body.push(b.stmt(b.call('_$_.set', b.id(info.name), b.false)));
-				} else {
-					callback_body.push(b.stmt(b.assignment('=', b.id(info.name), b.false)));
-				}
-			}
-		}
 
 		callback_body.push(
 			b.if(
@@ -3359,16 +3322,6 @@ const visitors = {
 					: undefined,
 				/** @type {AST.NodeWithLocation} */ (node),
 			);
-		}
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-		const info = context.state.return_flags?.get(node);
-		if (info) {
-			if (info.tracked) {
-				return b.stmt(b.call('_$_.set', b.id(info.name), b.true));
-			}
-			return b.stmt(b.assignment('=', b.id(info.name), b.true));
 		}
 		return context.next();
 	},
@@ -3685,6 +3638,7 @@ function join_template(items) {
  * @typedef {AST.Statement | ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} TsrxTsStatement
  * @typedef {AST.Expression | ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} TsrxTsExpression
  * @typedef {ESTreeJSX.JSXElement['children'][number]} TsrxTsxChild
+ * @typedef {TsrxTsExpression | ESTreeJSX.JSXText | ESTreeJSX.JSXExpressionContainer} TsrxTsViewNode
  */
 
 /**
@@ -3703,24 +3657,36 @@ function statement_to_tsrx_ts_expression(statement) {
 }
 
 /**
- * @param {TsrxTsExpression[]} children
- * @returns {TsrxTsExpression}
+ * @param {TsrxTsxChild[]} children
+ * @param {boolean} in_jsx_child
+ * @param {AST.NodeWithLocation} loc_node
+ * @returns {TsrxTsViewNode}
  */
-function build_tsrx_ts_return_expression(children) {
-	return children.length === 0
-		? b.literal(null)
-		: children.length === 1
-			? children[0]
-			: b.jsx_fragment(
-					// A plain expression placed directly as a JSX child reads as JSX text
-					// in the TS view (`<>{a}{b}</>` would become `<>ab</>`), so it needs
-					// an expression container to stay visible to TypeScript.
-					children.map((child) =>
-						child.type === 'JSXElement' || child.type === 'JSXFragment'
-							? child
-							: b.jsx_expression_container(child),
-					),
-				);
+function build_tsrx_ts_return_expression(children, in_jsx_child, loc_node) {
+	if (children.length === 0) {
+		// An empty fragment is a real value: keep it as `<></>` even in expression
+		// position. Lowering it to `null` (e.g. `let b = <></>`) drops the author's
+		// fragment; `<></>` is a valid value and matches the JSX targets' TS view.
+		return setLocation(b.jsx_fragment([]), loc_node);
+	}
+	if (children.length === 1) {
+		const only = children[0];
+		if (only.type === 'JSXText') {
+			return in_jsx_child
+				? setLocation(b.jsx_fragment([only]), /** @type {AST.NodeWithLocation} */ (only))
+				: b.literal(only.value);
+		}
+		if (only.type === 'JSXExpressionContainer' && !in_jsx_child) {
+			return only.expression;
+		}
+		if (is_empty_jsx_fragment(only)) {
+			// `<><></></>` — keep the outer fragment instead of collapsing to the bare
+			// inner `<></>`, matching the JSX targets and preserving author intent.
+			return setLocation(b.jsx_fragment([only]), loc_node);
+		}
+		return /** @type {TsrxTsViewNode} */ (only);
+	}
+	return b.jsx_fragment(children);
 }
 
 /**
@@ -3729,80 +3695,22 @@ function build_tsrx_ts_return_expression(children) {
  * @returns {TsrxTsStatement[]}
  */
 function transform_tsrx_ts_children(children, context) {
-	const { state, visit } = context;
+	const { state } = context;
 	/** @type {TsrxTsStatement[]} */
 	const init = [];
 	const ts_state = { ...state, init };
 
 	for (const child of children) {
 		if (child == null || child.type === 'EmptyStatement') continue;
+		// Spread `context` (not just `visit`/`state`) so flags like `value_position`
+		// reach nested fragment/element children — see transform_tsrx_tsx_child.
 		transform_ts_child(
 			/** @type {AST.Node} */ (child),
-			/** @type {TransformClientContext} */ ({ visit, state: ts_state }),
+			/** @type {TransformClientContext} */ ({ ...context, state: ts_state }),
 		);
 	}
 
 	return init.filter((statement) => statement.type !== 'EmptyStatement');
-}
-
-/**
- * @param {TsrxTsStatement[]} statements
- * @param {AST.TsrxFragment} loc_node
- * @param {TransformClientState} state
- * @returns {TsrxTsExpression}
- */
-function build_tsrx_ts_expression_from_statements(statements, loc_node, state) {
-	const inline_children = statements.map(statement_to_tsrx_ts_expression);
-
-	if (inline_children.every(Boolean)) {
-		return build_tsrx_ts_return_expression(/** @type {TsrxTsExpression[]} */ (inline_children));
-	}
-
-	/** @type {AST.Statement[]} */
-	const body = [];
-	const has_children = inline_children.some(Boolean);
-	const children_id = has_children ? state.scope.generate('children') : null;
-	if (children_id !== null) {
-		body.push(
-			b.const(
-				b.id(children_id),
-				b.ts_as(
-					b.array([]),
-					b.ts_type_reference(
-						b.id('Array'),
-						b.ts_type_parameter_instantiation([b.ts_keyword_type('any')]),
-					),
-				),
-			),
-		);
-	}
-	for (const statement of statements) {
-		const child = statement_to_tsrx_ts_expression(statement);
-		if (child) {
-			if (children_id !== null) {
-				body.push(
-					b.stmt(
-						b.call(b.member(b.id(children_id), 'push'), /** @type {AST.Expression} */ (child)),
-					),
-				);
-			}
-		} else {
-			body.push(/** @type {AST.Statement} */ (statement));
-		}
-	}
-
-	body.push(
-		b.return(
-			children_id === null
-				? b.literal(null)
-				: /** @type {AST.Expression} */ (
-						b.jsx_fragment([b.jsx_expression_container(b.id(children_id))])
-					),
-			/** @type {AST.NodeWithLocation} */ (loc_node),
-		),
-	);
-
-	return b.call(b.arrow([], b.block(body)));
 }
 
 /**
@@ -3812,13 +3720,29 @@ function build_tsrx_ts_expression_from_statements(statements, loc_node, state) {
  *
  * @param {AST.TsrxFragment} node
  * @param {VisitorClientContext} context
- * @returns {TsrxTsExpression}
+ * @param {boolean} [in_jsx_child]
+ * @returns {TsrxTsViewNode}
  */
-function build_tsrx_to_ts_expression(node, context) {
-	return build_tsrx_ts_expression_from_statements(
-		transform_tsrx_ts_children(/** @type {AST.Node[]} */ (node.children), context),
-		node,
-		context.state,
+function build_tsrx_to_ts_expression(node, context, in_jsx_child = false) {
+	// A compiler-generated wrapper (utils.js `wrap_directive_in_jsx_fragment`) around
+	// a single VALUE-position directive lowers to a TYPED VALUE (ternary / `.map` /
+	// returning IIFE), not the void render IIFE `transform_tsrx_tsx_children` would
+	// emit. Render position never sets `tsrx_generated_wrapper`, so it is unaffected;
+	// authored `<> … </>` (no wrapper flag) keeps flowing through the normal path.
+	if (node.metadata?.tsrx_generated_wrapper === true) {
+		const only = (node.children || []).find(
+			(/** @type {any} */ child) => child && child.type !== 'EmptyStatement',
+		);
+		if (only && /** @type {any} */ (only).metadata?.tsrxDirective) {
+			const value = build_tsrx_ts_directive_value(only, context);
+			return in_jsx_child ? b.jsx_expression_container(value) : value;
+		}
+	}
+	const children = transform_tsrx_tsx_children(/** @type {AST.Node[]} */ (node.children), context);
+	return build_tsrx_ts_return_expression(
+		children,
+		in_jsx_child,
+		/** @type {AST.NodeWithLocation} */ (/** @type {unknown} */ (node)),
 	);
 }
 
@@ -3887,7 +3811,7 @@ function transform_tsrx_tsx_children(children, context) {
 	}
 
 	flush_pending_statement_children();
-	return transformed_children;
+	return /** @type {TsrxTsxChild[]} */ (wrap_edge_whitespace(transformed_children));
 }
 
 /**
@@ -3907,8 +3831,26 @@ function transform_tsrx_tsx_child(node, context) {
 	}
 
 	if (node.type === 'TSRXExpression') {
+		// An EMPTY fragment that is the container's expression (`<b>{<></>}</b>`) must
+		// stay `<></>`: the `{}` already supplies the wrapper, so the default
+		// `in_jsx_child = false` lowering to a bare `null` drops the source fragment.
+		// Build it as a JSX child instead. Non-empty fragments keep their existing
+		// lowering (e.g. `{<>{a}</>}` still unwraps to `{a}`). This matches the JSX
+		// targets and how the same fragment survives in an attribute value.
+		const expr = node.expression;
+		const is_empty_fragment =
+			expr?.type === 'TsrxFragment' &&
+			!(expr.children || []).some(
+				(/** @type {any} */ child) =>
+					child &&
+					child.type !== 'EmptyStatement' &&
+					(child.type !== 'Text' || String(child.expression?.value ?? '') !== ''),
+			);
+		const expression = is_empty_fragment
+			? build_tsrx_to_ts_expression(/** @type {AST.TsrxFragment} */ (expr), context, true)
+			: /** @type {AST.Expression} */ (context.visit(node.expression, context.state));
 		return b.jsx_expression_container(
-			/** @type {AST.Expression} */ (context.visit(node.expression, context.state)),
+			/** @type {AST.Expression} */ (expression),
 			get_tsrx_expression_container_location(node),
 		);
 	}
@@ -3924,11 +3866,31 @@ function transform_tsrx_tsx_child(node, context) {
 	}
 
 	if (node.type === 'TsrxFragment') {
-		const expression = build_tsrx_to_ts_expression(node, context);
-		if (expression.type === 'JSXElement' || expression.type === 'JSXFragment') {
-			return /** @type {TsrxTsxChild} */ (expression);
+		// `in_jsx_child` mode already returns a valid JSX child (a fragment, or a
+		// `{expr}` container kept for type visibility), so use it as-is. Only a bare
+		// expression (which can happen in other positions) needs wrapping.
+		const expression = build_tsrx_to_ts_expression(node, context, true);
+		if (
+			expression.type === 'JSXElement' ||
+			expression.type === 'JSXFragment' ||
+			expression.type === 'JSXExpressionContainer' ||
+			expression.type === 'JSXText'
+		) {
+			return expression;
 		}
-		return b.jsx_expression_container(/** @type {AST.Expression} */ (expression));
+		return b.jsx_expression_container(expression);
+	}
+
+	// A directive nested as a child of VALUE content (inside an authored fragment that
+	// is itself a directive's branch/case value) is value content too — lower it to
+	// its value (`{cond ? <a/> : <b/>}`), like the JS targets. In render position (a
+	// direct child of the component's rendered output) it still renders, so this is
+	// gated on `value_position` set by `build_tsrx_ts_directive_value`.
+	if (
+		/** @type {any} */ (context).value_position &&
+		/** @type {any} */ (node).metadata?.tsrxDirective
+	) {
+		return b.jsx_expression_container(build_tsrx_ts_directive_value(node, context));
 	}
 
 	return undefined;
@@ -4167,6 +4129,257 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
 		: null;
 
 	return b.try(try_body, catch_handler, finalizer, pending);
+}
+
+/**
+ * Lower a VALUE-position control-flow directive (`const v = @if (…) { … }`) to a
+ * typed TS value for the to_ts view — a ternary (`@if`), an array `.map` (`@for`),
+ * or a returning IIFE (`@switch`/`@try`) — matching the JS targets' types. Unlike
+ * the render path (`transform_tsrx_ts_render_control_flow_statement`), each branch
+ * LEAF is returned, so the value is not a void IIFE. Render position never reaches
+ * here — only the generated value-wrapper fragment does (see
+ * `build_tsrx_to_ts_expression`).
+ * @param {any} node
+ * @param {VisitorClientContext} context
+ * @returns {AST.Expression}
+ */
+function build_tsrx_ts_directive_value(node, context) {
+	const scoped = (/** @type {AST.Node} */ scope_node) => ({
+		...context,
+		// Everything lowered as a directive's branch/case value is value content, so a
+		// directive nested in a fragment here lowers to a value (see transform_tsrx_tsx_child).
+		value_position: true,
+		state: {
+			...context.state,
+			scope:
+				/** @type {ScopeInterface} */ (context.state.scopes.get(scope_node)) || context.state.scope,
+		},
+	});
+	// Combine a render expression into a JSX child so multiple siblings can be
+	// merged into one fragment.
+	const to_fragment_child = (/** @type {any} */ expr) =>
+		expr?.type === 'JSXElement' ||
+		expr?.type === 'JSXFragment' ||
+		expr?.type === 'JSXText' ||
+		expr?.type === 'JSXExpressionContainer'
+			? expr
+			: b.jsx_expression_container(/** @type {AST.Expression} */ (expr));
+
+	// Lower a branch body to statements ending in a SINGLE `return` of the combined
+	// render value. All sibling templates — plain elements/expressions AND nested
+	// `@if`/`@for`/`@switch`/`@try` directives (each lowered to its own VALUE) — are
+	// merged into one `return <> … </>` (not several returns where only the first is
+	// reachable, nor a bare nested `if` dropped from the value). Setup statements are
+	// kept before the return so they share the IIFE scope.
+	const branch_returning_body = (
+		/** @type {AST.Node[]} */ body,
+		/** @type {AST.Node} */ scope_node,
+	) => {
+		const ctx = scoped(scope_node);
+		/** @type {AST.Statement[]} */
+		const setup = [];
+		/** @type {any[]} */
+		const renders = [];
+		for (const stmt of body) {
+			if (stmt == null || stmt.type === 'EmptyStatement') continue;
+			if (/** @type {any} */ (stmt).metadata?.tsrxDirective) {
+				// A nested directive is render content here — lower it to its own value.
+				renders.push(to_fragment_child(build_tsrx_ts_directive_value(stmt, scoped(stmt))));
+				continue;
+			}
+			// A render node lowers to a render expression (collected into the fragment);
+			// anything else (a `const`, a side effect) stays setup before the return.
+			for (const lowered of transform_tsrx_ts_children([stmt], ctx)) {
+				const expr = statement_to_tsrx_ts_expression(lowered);
+				if (expr) renders.push(to_fragment_child(expr));
+				else setup.push(/** @type {AST.Statement} */ (lowered));
+			}
+		}
+		const value = build_tsrx_ts_return_expression(
+			renders,
+			false,
+			/** @type {AST.NodeWithLocation} */ (scope_node),
+		);
+		return [...setup, b.return(/** @type {AST.Expression} */ (value))];
+	};
+
+	// A branch as a VALUE (a ternary arm): the bare value when there is no setup, an
+	// IIFE that returns it otherwise.
+	const branch_value = (/** @type {AST.Node[]} */ body, /** @type {AST.Node} */ scope_node) => {
+		const stmts = branch_returning_body(body, scope_node);
+		if (stmts.length === 1 && stmts[0].type === 'ReturnStatement' && stmts[0].argument) {
+			return /** @type {AST.Expression} */ (stmts[0].argument);
+		}
+		return b.call(b.thunk(b.block(stmts)));
+	};
+
+	if (node.type === 'IfStatement') {
+		const cons_body =
+			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+		const consequent = branch_value(cons_body, node.consequent);
+		let alternate = /** @type {AST.Expression} */ (b.literal(null));
+		if (node.alternate) {
+			const alt = /** @type {any} */ (node.alternate);
+			alternate =
+				alt.type === 'IfStatement'
+					? build_tsrx_ts_directive_value(alt, scoped(alt))
+					: branch_value(alt.type === 'BlockStatement' ? alt.body : [alt], alt);
+		}
+		return b.conditional(
+			/** @type {AST.Expression} */ (context.visit(node.test, context.state)),
+			consequent,
+			alternate,
+		);
+	}
+
+	if (node.type === 'ForOfStatement') {
+		// `@for await` iterates an AsyncIterable, which `Array.from` does NOT accept.
+		// Accumulate with a real `for await` loop instead (the runtime renders via
+		// `_$_.for`; this is the to_ts type view only). Await the async IIFE so the
+		// binding types as the item array, not a `Promise` — the enclosing component is
+		// async, since `for await` requires it.
+		if (node.await) {
+			const items_id = b.id('$$items');
+			/** @type {AST.Statement[]} */
+			const loop_body = [];
+			// `; index i` has no map-callback equivalent here; declare it as a typed
+			// `number` (its runtime value is irrelevant to the type view), like the
+			// render path. `; key expr` stays so it type-checks.
+			if (node.index) {
+				loop_body.push(
+					b.let(/** @type {AST.Identifier} */ (context.visit(node.index)), b.literal(0)),
+				);
+			}
+			if (node.key) {
+				loop_body.push(b.stmt(/** @type {AST.Expression} */ (context.visit(node.key))));
+			}
+			loop_body.push(
+				b.stmt(
+					b.call(
+						b.member(items_id, b.id('push')),
+						b.call(b.thunk(b.block(branch_returning_body(node.body.body, node.body)))),
+					),
+				),
+			);
+			const for_await = b.for_of(
+				/** @type {AST.Pattern} */ (context.visit(node.left)),
+				/** @type {AST.Expression} */ (context.visit(node.right)),
+				b.block(loop_body),
+				true,
+				/** @type {AST.NodeWithLocation} */ (node),
+			);
+			const result =
+				node.empty != null
+					? b.conditional(
+							b.binary('===', b.member(items_id, b.id('length')), b.literal(0)),
+							branch_value(node.empty.body, node.empty),
+							items_id,
+						)
+					: items_id;
+			const iife = b.arrow(
+				[],
+				b.block([b.const(items_id, b.array([])), for_await, b.return(result)]),
+				true,
+			);
+			// The custom esrap AwaitExpression printer reads `node.loc`, so stamp it.
+			return setLocation(b.await(b.call(iife)), /** @type {AST.NodeWithLocation} */ (node));
+		}
+		const body = branch_returning_body(
+			/** @type {AST.BlockStatement} */ (node.body).body,
+			node.body,
+		);
+		// A keyed `@for (…; key expr)` evaluates `expr` per item — keep it so the key
+		// type-checks (it references the loop variable), matching the render path.
+		if (node.key) {
+			body.unshift(b.stmt(/** @type {AST.Expression} */ (context.visit(node.key))));
+		}
+		// `node.left` is a `const x` VariableDeclaration; the `.map` callback needs the
+		// bare pattern (`x`), not the declaration statement. `; index i` becomes the
+		// callback's second parameter (`(x, i)`), not a dropped reference.
+		const left = /** @type {any} */ (node.left);
+		const param = left.type === 'VariableDeclaration' ? left.declarations[0].id : left;
+		const params = [/** @type {AST.Pattern} */ (context.visit(param))];
+		if (node.index) {
+			params.push(/** @type {AST.Pattern} */ (context.visit(node.index)));
+		}
+		// `@for` iterates ANY iterable, but many (Set, Map, generators) have no `.length`
+		// or `.map`, so lowering those directly typed the binding as an error and never
+		// surfaced the `@empty` branch. `Array.from(iterable)` yields a real array — the
+		// Ripple `to_ts` analog of the JS targets' `map_iterable` helper.
+		const items = () =>
+			b.call(
+				b.member(b.id('Array'), b.id('from')),
+				/** @type {AST.Expression} */ (context.visit(node.right)),
+			);
+		const map_arrow = b.arrow(params, b.block(body));
+		if (node.empty != null) {
+			// Bind `Array.from(iterable)` ONCE: a one-shot iterable (a generator) would be
+			// exhausted by a second `Array.from`, so the `.length` test and the `.map` must
+			// read the same materialized array.
+			const items_id = b.id('$$items');
+			return b.call(
+				b.thunk(
+					b.block([
+						b.const(items_id, items()),
+						b.return(
+							b.conditional(
+								b.binary('===', b.member(items_id, b.id('length')), b.literal(0)),
+								branch_value(node.empty.body, node.empty),
+								b.call(b.member(items_id, b.id('map')), map_arrow),
+							),
+						),
+					]),
+				),
+			);
+		}
+		return b.call(b.member(items(), b.id('map')), map_arrow);
+	}
+
+	if (node.type === 'SwitchStatement') {
+		const cases = node.cases.map((/** @type {any} */ sc) =>
+			b.switch_case(
+				sc.test ? /** @type {AST.Expression} */ (context.visit(sc.test)) : null,
+				branch_returning_body(flatten_switch_consequent(sc.consequent), sc.consequent),
+			),
+		);
+		const switch_stmt = b.switch(
+			/** @type {AST.Expression} */ (context.visit(node.discriminant)),
+			cases,
+			/** @type {AST.NodeWithLocation} */ (node),
+		);
+		return b.call(b.thunk(b.block([switch_stmt, b.return(b.literal(null))])));
+	}
+
+	// TryStatement: try/catch/pending leaves return; a `finally` must not.
+	const try_body = b.block(
+		branch_returning_body(node.block.body, node.block),
+		/** @type {AST.NodeWithLocation} */ (node.block),
+	);
+	let catch_handler = null;
+	if (node.handler) {
+		catch_handler = b.catch_clause(
+			node.handler.param || null,
+			node.handler.resetParam || null,
+			b.block(
+				branch_returning_body(node.handler.body.body, node.handler.body),
+				/** @type {AST.NodeWithLocation} */ (node.handler.body),
+			),
+			/** @type {AST.NodeWithLocation} */ (node.handler),
+		);
+	}
+	const pending = node.pending
+		? b.block(
+				branch_returning_body(node.pending.body, node.pending),
+				/** @type {AST.NodeWithLocation} */ (node.pending),
+			)
+		: null;
+	const finalizer = node.finalizer
+		? b.block(
+				transform_body(node.finalizer.body, scoped(node.finalizer)),
+				/** @type {AST.NodeWithLocation} */ (node.finalizer),
+			)
+		: null;
+	return b.call(b.thunk(b.block([b.try(try_body, catch_handler, finalizer, pending)])));
 }
 
 /**
@@ -4542,7 +4755,14 @@ function transform_ts_child(node, context) {
 		}
 		state.init.push(/** @type {AST.Statement} */ (result));
 	} else if (node.type === 'TsrxFragment') {
-		const result = build_tsrx_to_ts_expression(node, context);
+		let result = build_tsrx_to_ts_expression(node, context);
+		// Keep an AUTHORED `<> … </>` here too (a render-output / control-flow branch
+		// body, e.g. the `<>{[1,2,3]}</>` branch of an `@if`), so it is not unwrapped to
+		// a bare `[1,2,3]`. The fragment's contents (including any `<style>`) are already
+		// lowered by `build_tsrx_to_ts_expression`; this only re-adds the `<> … </>`.
+		if (is_authored_native_fragment(node)) {
+			result = wrap_to_ts_value_in_fragment(result, node);
+		}
 		if (!state.init) {
 			return result;
 		}
@@ -4605,105 +4825,6 @@ function is_template_or_control_flow(node) {
 }
 
 /**
- * Builds a negated AND condition from return flag info.
- * @param {{ name: string, tracked: boolean }[]} flags
- * @returns {AST.Expression}
- */
-function build_return_guard(flags) {
-	/** @param {{ name: string, tracked: boolean }} flag */
-	const negate_flag = (flag) =>
-		flag.tracked ? b.unary('!', tracked_get(b.id(flag.name))) : b.unary('!', b.id(flag.name));
-
-	/** @type {AST.Expression} */
-	let condition = negate_flag(flags[0]);
-	for (let i = 1; i < flags.length; i++) {
-		condition = b.logical('&&', condition, negate_flag(flags[i]));
-	}
-	return condition;
-}
-
-/**
- * Builds a positive OR condition from return flag info.
- * @param {{ name: string, tracked: boolean }[]} flags
- * @returns {AST.Expression}
- */
-function build_positive_return_guard(flags) {
-	/** @param {{ name: string, tracked: boolean }} flag */
-	const read_flag = (flag) => (flag.tracked ? tracked_get(b.id(flag.name)) : b.id(flag.name));
-
-	/** @type {AST.Expression} */
-	let condition = read_flag(flags[0]);
-	for (let i = 1; i < flags.length; i++) {
-		condition = b.logical('||', condition, read_flag(flags[i]));
-	}
-	return condition;
-}
-
-/**
- * @param {AST.Node} node
- * @param {Map<AST.ReturnStatement, { name: string, tracked: boolean }>} return_flags
- * @returns {{ name: string, tracked: boolean } | null}
- */
-function get_returned_child_info(node, return_flags) {
-	const source = /** @type {AST.ReturnStatement | undefined} */ (
-		node.metadata?.returned_tsrx_return
-	);
-	return source ? (return_flags.get(source) ?? null) : null;
-}
-
-/**
- * Collects all unique valid return statements from direct children.
- * @param {AST.Node[]} children
- * @returns {AST.ReturnStatement[]}
- */
-function collect_returns_from_children(children) {
-	/** @type {AST.ReturnStatement[]} */
-	const returns = [];
-	const seen = new Set();
-	for (let index = 0; index < children.length; index++) {
-		const node = children[index];
-		if (
-			node.type === 'ReturnStatement' &&
-			index !== children.length - 1 &&
-			!node.metadata?.invalid_tsrx_template_return
-		) {
-			if (!seen.has(node)) {
-				seen.add(node);
-				returns.push(node);
-			}
-		}
-		if (node.metadata?.returns) {
-			for (const ret of node.metadata.returns) {
-				if (!ret.metadata?.invalid_tsrx_template_return && !seen.has(ret)) {
-					seen.add(ret);
-					returns.push(ret);
-				}
-			}
-		}
-	}
-	return returns;
-}
-
-/**
- * @param {AST.ReturnStatement[]} returns
- * @param {Map<AST.ReturnStatement, { name: string, tracked: boolean }>} return_flags
- * @returns {{ name: string, tracked: boolean }[]}
- */
-function get_unique_return_infos(returns, return_flags) {
-	/** @type {{ name: string, tracked: boolean }[]} */
-	const infos = [];
-	const seen = new Set();
-	for (const ret of returns) {
-		const info = return_flags.get(ret);
-		if (info && !seen.has(info.name)) {
-			seen.add(info.name);
-			infos.push(info);
-		}
-	}
-	return infos;
-}
-
-/**
  * @param {AST.Node} node
  * @returns {boolean}
  */
@@ -4758,6 +4879,76 @@ function is_native_tsrx_value_position(path) {
 		parent?.type === 'Element' ||
 		parent?.type === 'TsrxFragment'
 	);
+}
+
+/**
+ * A `<> … </>` combined INTO a surrounding expression (an operator operand, a
+ * conditional branch, an array element, …) rather than being the sole value of a
+ * render-output slot. There the to_ts collapse of a single-child fragment to its
+ * bare value flips meaning — a fragment is always truthy, but `<>{0}</>` collapses
+ * to a falsy `0`, so `<>{0}</> || 'x'` would render `'x'` instead of `0`. Keep the
+ * fragment in these positions.
+ * @param {AST.Node[]} path
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+/**
+ * An AUTHORED `<> … </>` fragment (not a compiler-generated wrapper around a
+ * directive, nor a code-block-chain wrapper). These are kept verbatim in the
+ * to_ts output instead of being unwrapped to their single child.
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_authored_native_fragment(node) {
+	return (
+		node?.type === 'TsrxFragment' &&
+		node.metadata?.native_tsrx === true &&
+		node.metadata?.tsrx_generated_wrapper !== true &&
+		node.metadata?.tsrx_code_block_chain !== true
+	);
+}
+
+/**
+ * @param {AST.Node[]} path
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+function is_combined_expression_position(path, node) {
+	const parent = /** @type {any} */ (path.at(-1));
+	if (!parent || !isTemplateValuePosition(parent, node)) return false;
+	switch (parent.type) {
+		// Sole-value render-output slots: the collapse is invisible, keep it.
+		case 'VariableDeclarator':
+			return parent.init !== node;
+		case 'AssignmentExpression':
+			return parent.right !== node;
+		case 'CallExpression':
+		case 'NewExpression':
+			return !(Array.isArray(parent.arguments) && parent.arguments.includes(node));
+		default:
+			return true;
+	}
+}
+
+/**
+ * Re-wrap a lowered to_ts value in a `<> … </>` fragment so a fragment combined
+ * into an expression keeps its fragment identity (see
+ * `is_combined_expression_position`). A value that is already a fragment is left
+ * as-is; a JSX element/text/container nests directly; any other expression goes in
+ * a `{ … }` container.
+ * @param {any} expression
+ * @param {AST.Node} source
+ * @returns {any}
+ */
+function wrap_to_ts_value_in_fragment(expression, source) {
+	if (expression?.type === 'JSXFragment') return expression;
+	const child =
+		expression?.type === 'JSXElement' ||
+		expression?.type === 'JSXText' ||
+		expression?.type === 'JSXExpressionContainer'
+			? expression
+			: b.jsx_expression_container(/** @type {AST.Expression} */ (expression));
+	return setLocation(b.jsx_fragment([child]), /** @type {AST.NodeWithLocation} */ (source));
 }
 
 /**
@@ -4924,54 +5115,12 @@ function transform_children(children, context) {
 		...context,
 		state: { ...state, keep_component_style: state.to_ts ? true : state.keep_component_style },
 	});
-	const effective_normalized = normalized.filter(
-		(node) => !(node.metadata?.regular_js && is_dead_native_tsrx_expression_statement(node)),
-	);
 
 	const head_elements = /** @type {AST.Element[]} */ (
 		children.filter(
 			(node) => node.type === 'Element' && node.id.type === 'Identifier' && node.id.name === 'head',
 		)
 	);
-
-	const all_returns = collect_returns_from_children(effective_normalized);
-	/** @type {Map<AST.ReturnStatement, { name: string, tracked: boolean }>} */
-	const return_flags = new Map([...(state.return_flags || [])]);
-	/** @type {AST.ReturnStatement[]} */
-	const new_returns = [];
-	for (const ret of all_returns) {
-		if (!return_flags.has(ret)) {
-			new_returns.push(ret);
-		}
-	}
-
-	const return_guard_scope = (state.component && state.scopes.get(state.component)) || state.scope;
-	const shared_return_info =
-		new_returns.length > 0
-			? {
-					name: generate_local_name(return_guard_scope, 'return_guard'),
-					tracked: new_returns.some((ret) => ret.metadata?.is_reactive ?? false),
-				}
-			: null;
-	if (shared_return_info !== null) {
-		for (const ret of new_returns) {
-			return_flags.set(ret, shared_return_info);
-		}
-	}
-
-	if (!state.to_ts && shared_return_info !== null) {
-		if (shared_return_info.tracked) {
-			state.init?.unshift(
-				b.var(b.id(shared_return_info.name), b.call('_$_.track', b.false, b.id('__block'))),
-			);
-		} else {
-			state.init?.unshift(b.var(b.id(shared_return_info.name), b.false));
-		}
-	}
-
-	/** @type {{ name: string, tracked: boolean }[]} */
-	const accumulated_return_flags = [];
-	const has_returns = all_returns.length > 0;
 
 	const is_fragment =
 		normalized.some(
@@ -5045,85 +5194,14 @@ function transform_children(children, context) {
 		state.init?.push(b.var(id, b.call(template_id)));
 	};
 
-	/** @type {AST.Node[]} */
-	let pending_group = [];
-	/** @type {{ name: string, tracked: boolean }[]} */
-	let pending_guard_flags = [];
-	let pending_guard_positive = false;
 	let fragment_hop_count = 0;
 
 	let skipped = 0;
-
-	const flush_pending_group = () => {
-		if (pending_group.length === 0) return;
-
-		const guard_flags = pending_guard_flags;
-		const guard_positive = pending_guard_positive;
-		const group_nodes = pending_group;
-		pending_group = [];
-		pending_guard_flags = [];
-		pending_guard_positive = false;
-
-		state.template?.push('<!>');
-		if (is_fragment) {
-			fragment_hop_count += 1;
-		}
-
-		if (initial === null && root) {
-			create_initial(group_nodes[0]);
-		}
-
-		const current_prev = prev;
-		/** @type {AST.Identifier | null} */
-		let cached_anchor = null;
-		const group_flush_node = () => {
-			if (cached_anchor) return cached_anchor;
-			const id = b.id(state.scope.generate('node'));
-			if (current_prev !== null) {
-				state.init?.push(b.var(id, b.call('_$_.sibling', current_prev())));
-			} else if (initial !== null) {
-				if (is_fragment) {
-					state.init?.push(b.var(id, b.call('_$_.first_child_frag', initial)));
-				} else {
-					cached_anchor = initial;
-					return initial;
-				}
-			} else if (state.flush_node !== null) {
-				state.init?.push(b.var(id, b.call('_$_.child', state.flush_node?.())));
-			}
-			cached_anchor = id;
-			return id;
-		};
-
-		prev = group_flush_node;
-
-		const anchor = group_flush_node();
-		const body = transform_body(group_nodes, {
-			...context,
-			state: { ...context.state, flush_node: null, return_flags },
-		});
-
-		const content_id = state.scope.generate('content');
-		const guard_condition = guard_positive
-			? build_positive_return_guard(guard_flags)
-			: build_return_guard(guard_flags);
-
-		/** @type {AST.Statement[]} */
-		const callback_body = [
-			b.if(guard_condition, b.stmt(b.call(b.id('__render'), b.id(content_id)))),
-		];
-
-		state.init?.push(b.var(b.id(content_id), b.arrow([b.id('__anchor')], b.block(body))));
-		state.init?.push(
-			b.stmt(b.call('_$_.if', anchor, b.arrow([b.id('__render')], b.block(callback_body)))),
-		);
-	};
 
 	for (let node_idx = 0; node_idx < normalized.length; node_idx++) {
 		const node = normalized[node_idx];
 
 		if (node.metadata?.regular_js && !state.to_ts) {
-			flush_pending_group();
 			if (is_dead_native_tsrx_expression_statement(node)) {
 				continue;
 			}
@@ -5140,46 +5218,10 @@ function transform_children(children, context) {
 					regular_node.type.endsWith('Statement') || regular_node.type.endsWith('Declaration')
 						? /** @type {AST.Statement} */ (regular_node)
 						: b.stmt(/** @type {AST.Expression} */ (regular_node));
-				state.init?.push(
-					accumulated_return_flags.length > 0 && should_guard_regular_js_statement(statement)
-						? b.if(build_return_guard(accumulated_return_flags), statement)
-						: statement,
-				);
+				state.init?.push(statement);
 			}
 			continue;
 		}
-
-		if (accumulated_return_flags.length > 0 && is_template_or_control_flow(node) && !state.to_ts) {
-			const returned_child_info = get_returned_child_info(node, return_flags);
-			const guard_flags = returned_child_info ? [returned_child_info] : accumulated_return_flags;
-			const guard_positive = returned_child_info !== null;
-			const guard_key = guard_flags.map((flag) => flag.name).join(',');
-			const pending_guard_key = pending_guard_flags.map((flag) => flag.name).join(',');
-			if (
-				pending_group.length > 0 &&
-				(pending_guard_positive !== guard_positive || pending_guard_key !== guard_key)
-			) {
-				flush_pending_group();
-			}
-			if (pending_group.length === 0) {
-				pending_guard_flags = [...guard_flags];
-				pending_guard_positive = guard_positive;
-			}
-			pending_group.push(node);
-
-			if (node.metadata?.has_return && node.metadata.returns) {
-				flush_pending_group();
-				for (const ret of node.metadata.returns) {
-					const info = return_flags.get(ret);
-					if (info && !accumulated_return_flags.some((f) => f.name === info.name)) {
-						accumulated_return_flags.push(info);
-					}
-				}
-			}
-			continue;
-		}
-
-		flush_pending_group();
 
 		if (is_fragment && is_template_or_control_flow(node)) {
 			fragment_hop_count += 1;
@@ -5198,15 +5240,7 @@ function transform_children(children, context) {
 			node.type === 'ReturnStatement' ||
 			is_native_tsrx_function_node(node)
 		) {
-			state.init?.push(/** @type {AST.Statement} */ (visit(node, { ...state, return_flags })));
-			if (!state.to_ts) {
-				if (node.type === 'ReturnStatement') {
-					const info = return_flags.get(node);
-					if (info && !accumulated_return_flags.some((f) => f.name === info.name)) {
-						accumulated_return_flags.push(info);
-					}
-				}
-			}
+			state.init?.push(/** @type {AST.Statement} */ (visit(node, state)));
 		} else if (state.to_ts) {
 			transform_ts_child(node, /** @type {VisitorClientContext} */ ({ visit, state }));
 		} else {
@@ -5335,7 +5369,6 @@ function transform_children(children, context) {
 
 				visit(node, {
 					...state,
-					return_flags,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
@@ -5401,7 +5434,6 @@ function transform_children(children, context) {
 
 				visit(node, {
 					...state,
-					return_flags,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
@@ -5475,7 +5507,6 @@ function transform_children(children, context) {
 				node.is_controlled = is_controlled;
 				visit(node, {
 					...state,
-					return_flags,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
@@ -5484,7 +5515,6 @@ function transform_children(children, context) {
 				node.is_controlled = is_controlled;
 				visit(node, {
 					...state,
-					return_flags,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
@@ -5512,18 +5542,7 @@ function transform_children(children, context) {
 				debugger;
 			}
 		}
-
-		if (has_returns && node.metadata?.has_return && node.metadata.returns) {
-			for (const ret of node.metadata.returns) {
-				const info = return_flags.get(ret);
-				if (info && !accumulated_return_flags.some((f) => f.name === info.name)) {
-					accumulated_return_flags.push(info);
-				}
-			}
-		}
 	}
-
-	flush_pending_group();
 
 	for (let i = 0; i < head_elements.length; i++) {
 		const head_element = head_elements[i];

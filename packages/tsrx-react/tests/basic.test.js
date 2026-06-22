@@ -88,7 +88,7 @@ describe('@tsrx/react basic', () => {
 			expect(css).toContain(`div.${cssHash}`);
 			expect(css).toContain('color: red;');
 			expect(code).toContain(`className="${cssHash}"`);
-			expect(code).toContain('return x ?');
+			expect(code).toContain('return <>{x ?');
 			expect(code).toContain('idle');
 			expect(code).not.toContain('<style>');
 		});
@@ -243,7 +243,7 @@ describe('@tsrx/react basic', () => {
 			`export function App() @{
 				<>
 					@if (true) {
-						<div>{'inside'}</div>
+						<div className="div">{'inside'}</div>
 					}
 
 					<style>
@@ -257,8 +257,8 @@ describe('@tsrx/react basic', () => {
 		);
 
 		expect(css).not.toBe('');
-		expect(code).toContain(`className="${cssHash}"`);
-		expect(code).toContain(`App__static1 = <div className="${cssHash}">`);
+		expect(code).toContain(`className="div ${cssHash}"`);
+		expect(code).toContain(`App__static1 = <div className="div ${cssHash}">`);
 		expect(css).toContain(`.div.${cssHash}`);
 	});
 
@@ -2010,6 +2010,40 @@ describe('lazy destructuring', () => {
 		expect(code).not.toContain('<App__StatementBodyHook1 laterVar={laterVar} />');
 		expect(code).toContain('return <div>{laterVar}</div>;');
 		expect(code).not.toContain('App__Continue');
+	});
+
+	it('leaves lazy destructuring inside nested scopes untouched in type-only output', () => {
+		const { code } = compile_to_volar_mappings(
+			`export function App(props) @{
+				@{
+					let &{ name } = props;
+					<div>{name}</div>
+				}
+			}`,
+			'App.tsrx',
+		);
+
+		// Type-only (virtual TSX) output must not run the lazy transform: the
+		// pattern prints as a plain destructure and no generated `__lazy` source
+		// id appears, even when the lazy declaration sits in a nested code block.
+		expect(code).not.toContain('__lazy');
+		expect(code).toContain('let { name } = props');
+	});
+
+	it('keeps a lazy binding used as a JSX name unrewritten in type-only output', () => {
+		const { code } = compile_to_volar_mappings(
+			`export function Comp(&{ Item }) @{
+				<Item></Item>
+			}`,
+			'App.tsrx',
+		);
+
+		// The param stays a bare destructure (so `Item` maps identity-style to
+		// source) and `<Item>` keeps referencing that in-scope binding — no rename
+		// to `__lazy0.Item`, which only happens in production output.
+		expect(code).not.toContain('__lazy');
+		expect(code).toContain('{ Item }');
+		expect(code).toContain('<Item>');
 	});
 
 	describe('ref attributes', () => {

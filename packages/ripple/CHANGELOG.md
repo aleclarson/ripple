@@ -1,5 +1,87 @@
 # ripple
 
+## 0.3.84
+
+### Patch Changes
+
+- [`a5d1860`](https://github.com/Ripple-TS/ripple/commit/a5d18603beac4b15e99f9d23f4d0b18b67ffe413)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Adds snapshot() api for
+  non-reactive shallow copies of RippleArray and RippleObject
+- Updated dependencies
+  [[`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432),
+  [`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)]:
+  - @tsrx/core@0.1.32
+  - @tsrx/ripple@0.1.32
+
+## 0.3.83
+
+### Patch Changes
+
+- [#1269](https://github.com/Ripple-TS/ripple/pull/1269)
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Treat plain JS control flow
+  inside `@{ … }` as ordinary JavaScript that returns JSX.
+
+  Only `@`-directives (`@if`/`@for`/`@switch`/`@try`) lower to template control
+  flow. Plain `if`/`for`/`for…of`/`for…in`/`while`/`do…while`/`switch`/`try`
+  inside a code block are now compiled exactly like the same control flow in a
+  regular `function C() { …; return <jsx> }` body — their JSX returns become
+  `tsrx_element` values rather than being template-ized.
+
+  Previously these plain statements were mis-routed into the template transform:
+  on **ripple** an early-return guard produced a `_$_.if`/`_$_.switch`/`_$_.try`
+  wrapper (with dead code in the `switch`/`try` cases) and plain loops threw a
+  compile error; on **solid** they produced
+  `<Show>`/`<Switch>`/`<For>`/`<Errored>` (dropping trailing output for `try`).
+  They now stay as plain control flow, so early-return guards and loops behave
+  like normal JavaScript.
+
+  As part of this, the ripple client and server targets no longer emit the
+  `return_guard` bookkeeping variable: a plain early `return` is a real early
+  return, so subsequent template output is naturally skipped without a guard flag.
+
+  On **solid**, this means a plain guard (`if (signal()) return …`) inside a
+  component body now runs once at setup — exactly like a regular Solid component —
+  instead of being lifted into a reactive `<Show>`. Use `@if` (or another
+  `@`-directive) when you want reactive conditional rendering.
+
+- Updated dependencies
+  [[`3d93339`](https://github.com/Ripple-TS/ripple/commit/3d93339e851818b547c43c29c8965700c069b037),
+  [`5646eb4`](https://github.com/Ripple-TS/ripple/commit/5646eb4e4c101b34100acf30ea57ad4065a47720),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)]:
+  - @tsrx/ripple@0.1.31
+  - @tsrx/core@0.1.31
+
+## 0.3.82
+
+### Patch Changes
+
+- [`67f3794`](https://github.com/Ripple-TS/ripple/commit/67f3794d2f1ffd55dd23a47327d925d9a76a4171)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Accept a component function
+  as the `children` prop in `mount()` and `hydrate()`. Compiled component call
+  sites normalize `children` via `normalize_children`, but props passed through
+  the mount options skipped that step, so a plain component function would be
+  rendered as text. The same normalization is now applied to `options.props`,
+  which lets bootstrap code hydrate a layout with its page as `children` without
+  reaching into runtime internals.
+- Updated dependencies
+  [[`b104604`](https://github.com/Ripple-TS/ripple/commit/b10460473fec0ee68b4963cbc2a3d9d5bb3bc633)]:
+  - @tsrx/core@0.1.30
+  - @tsrx/ripple@0.1.30
+
+## 0.3.81
+
+### Patch Changes
+
+- Updated dependencies
+  [[`67de047`](https://github.com/Ripple-TS/ripple/commit/67de047d103f39673b25910e1a97760278820999),
+  [`3b6fb73`](https://github.com/Ripple-TS/ripple/commit/3b6fb73170d4ad6a383befdda951ce0da4fcbb46),
+  [`1c645c8`](https://github.com/Ripple-TS/ripple/commit/1c645c8f854df23bb1271b3402d1885616b525cd),
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)]:
+  - @tsrx/core@0.1.29
+  - @tsrx/ripple@0.1.29
+
 ## 0.3.80
 
 ### Patch Changes

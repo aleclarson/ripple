@@ -1,5 +1,187 @@
 # @tsrx/ripple
 
+## 0.1.32
+
+### Patch Changes
+
+- [#1277](https://github.com/Ripple-TS/ripple/pull/1277)
+  [`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Preserve significant
+  whitespace and keep fragments faithful in TSRX template output.
+  - Parser: a sibling after a closing tag (`<b>1</b> 2`, `<> <>x</> y <>z</> </>`)
+    now reads as JSX text at the source, so significant inline whitespace is kept
+    instead of being eaten by `skipSpace`. This fixes the leading space being
+    dropped (`" 2 "` not `"2 "`) and removes several closing-tag
+    whitespace/context workarounds.
+  - Transform: a single-text fragment used as a JSX child stays a fragment
+    (`<>123</>` instead of `{'123'}`), and an empty fragment child stays `<></>`
+    instead of `{null}`. Expression/return-position single-text fragments still
+    lower to a string (`return <>x</>` -> `return "x"`). Whitespace at a
+    fragment/element's content edges is wrapped in a `{' '}` container so it
+    survives formatting/JSX collapsing; whitespace between siblings stays bare
+    (`<b/> <i/>`). The edge rule is shared (`wrapEdgeWhitespace`) across the
+    React/Preact/Solid transforms and the Ripple to_ts view.
+  - Ripple target: whitespace-only text that is a significant inline space is kept
+    rather than dropped, so edge and inter-element spaces survive in client
+    templates and SSR output. The to_ts / Volar type-checking view now matches the
+    JSX targets — literal text stays bare (not `{"123"}`), single-text fragments
+    stay `<>123</>`, empty fragments stay `<></>` (not `{null}`), `{a}` expression
+    containers are preserved for type visibility, and edge whitespace prints as
+    single-quote `{' '}`.
+
+- Updated dependencies
+  [[`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432),
+  [`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)]:
+  - @tsrx/core@0.1.32
+
+## 0.1.31
+
+### Patch Changes
+
+- [#1268](https://github.com/Ripple-TS/ripple/pull/1268)
+  [`3d93339`](https://github.com/Ripple-TS/ripple/commit/3d93339e851818b547c43c29c8965700c069b037)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Never render `null` or
+  `undefined` as text in interpolated template output.
+
+  When adjacent text and expressions are merged for concatenation, a dynamic value
+  was coerced with `String(value)`, so a nullish value printed the literal string
+  `"null"`/`"undefined"` (e.g. `<h1>Welcome,{user.name}</h1>` rendered
+  `Welcome,null`). The merge now coerces via `String(value ?? '')` so nullish
+  values render as empty text. This applies to both the client and server targets.
+  An author-written `String(...)` is unaffected and still stringifies nullish
+  explicitly.
+
+- [#1266](https://github.com/Ripple-TS/ripple/pull/1266)
+  [`5646eb4`](https://github.com/Ripple-TS/ripple/commit/5646eb4e4c101b34100acf30ea57ad4065a47720)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Fix client crash when a
+  `function C() { return <jsx> }` component renders a template control-flow
+  directive (`@if`/`@for`/`@switch`/`@try`).
+
+  The block-statement return form is transformed via the generic function path,
+  which never sets the `component` render state. A directive-branch element in
+  statement position (e.g. `@if (cond) { <p>…</p> }`) then matched the
+  out-of-component "bare template statement" rule and was double-wrapped: its
+  content compiled into an orphaned template while the template the branch
+  actually referenced was left empty, crashing at runtime with
+  `Cannot read properties of null (reading 'cloneNode')`. A synthetic children
+  render arrow now establishes itself as the component boundary when no enclosing
+  component is set, so directive branches inline their content correctly. The
+  `@{ … }` form and the server target were already correct.
+
+- [#1269](https://github.com/Ripple-TS/ripple/pull/1269)
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Disallow `return` statements
+  inside `@try`/`@catch`/`@pending` blocks.
+
+  `return` is only valid in the JS setup at the top of a `@{ … }` code block —
+  never inside a `@`-directive block. `@if`/`@for`/`@switch` already rejected
+  returns; `@try`/`@catch`/`@pending` previously allowed `return <markup>`
+  (lowering it into a reactive boundary fallback). They now reject any `return`
+  (with or without an argument) with the same
+  `Return statements are not allowed inside TSRX templates` diagnostic,
+  consistently across every target (ripple, react, preact, solid, vue). Render
+  markup by writing it as the block's output instead of returning it. Returns
+  inside nested ordinary functions are unaffected.
+
+- [#1269](https://github.com/Ripple-TS/ripple/pull/1269)
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Treat plain JS control flow
+  inside `@{ … }` as ordinary JavaScript that returns JSX.
+
+  Only `@`-directives (`@if`/`@for`/`@switch`/`@try`) lower to template control
+  flow. Plain `if`/`for`/`for…of`/`for…in`/`while`/`do…while`/`switch`/`try`
+  inside a code block are now compiled exactly like the same control flow in a
+  regular `function C() { …; return <jsx> }` body — their JSX returns become
+  `tsrx_element` values rather than being template-ized.
+
+  Previously these plain statements were mis-routed into the template transform:
+  on **ripple** an early-return guard produced a `_$_.if`/`_$_.switch`/`_$_.try`
+  wrapper (with dead code in the `switch`/`try` cases) and plain loops threw a
+  compile error; on **solid** they produced
+  `<Show>`/`<Switch>`/`<For>`/`<Errored>` (dropping trailing output for `try`).
+  They now stay as plain control flow, so early-return guards and loops behave
+  like normal JavaScript.
+
+  As part of this, the ripple client and server targets no longer emit the
+  `return_guard` bookkeeping variable: a plain early `return` is a real early
+  return, so subsequent template output is naturally skipped without a guard flag.
+
+  On **solid**, this means a plain guard (`if (signal()) return …`) inside a
+  component body now runs once at setup — exactly like a regular Solid component —
+  instead of being lifted into a reactive `<Show>`. Use `@if` (or another
+  `@`-directive) when you want reactive conditional rendering.
+
+- Updated dependencies
+  [[`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)]:
+  - @tsrx/core@0.1.31
+
+## 0.1.30
+
+### Patch Changes
+
+- Updated dependencies
+  [[`b104604`](https://github.com/Ripple-TS/ripple/commit/b10460473fec0ee68b4963cbc2a3d9d5bb3bc633)]:
+  - @tsrx/core@0.1.30
+
+## 0.1.29
+
+### Patch Changes
+
+- [#1259](https://github.com/Ripple-TS/ripple/pull/1259)
+  [`3b6fb73`](https://github.com/Ripple-TS/ripple/commit/3b6fb73170d4ad6a383befdda951ce0da4fcbb46)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Lower a code-only `@{ … }`
+  block in value position to a `tsrx_element`. The value-position IIFE wrap was
+  gated on the block having render output, so a render-less block assigned to a
+  variable or returned (e.g. `const Test = @{ const y = 1; };`) was lowered to a
+  bare `BlockStatement` and printed as a malformed object literal
+  (`const Test = { const y = 1; };`) in client, server, and `to_ts` output. The
+  wrap now applies regardless of render output, so a code-only block gets the same
+  lowering as a render-bearing one — a `tsrx_element` whose setup runs on render
+  and which renders nothing (an immediately-invoked arrow in the `to_ts` view).
+
+- [#1262](https://github.com/Ripple-TS/ripple/pull/1262)
+  [`1c645c8`](https://github.com/Ripple-TS/ripple/commit/1c645c8f854df23bb1271b3402d1885616b525cd)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Prune unreachable selectors
+  from `<style>` blocks consistently across targets.
+
+  For a style expression (`const styles = <style> … </style>`), only standalone
+  class selectors — scoped (`.x`) or global-wrapped (`:global(.x)`) — end up in
+  the generated class map, but the emitted CSS still contained every selector.
+  Top-level selectors that don't contribute a class map entry (element selectors,
+  compound selectors, descendant chains, global tag selectors) are now commented
+  out as unused, while standalone classes, `:global(.x)` selectors, and rules
+  nested inside a reachable rule (e.g. `&:hover`) are kept.
+
+  Free-standing `<style>` blocks in the shared JSX targets (react, preact, solid,
+  vue) now prune selectors that match no element, the same way the Ripple target
+  always has, instead of keeping every authored selector. Selector matching also
+  recognizes `className` as the class attribute for React-style targets.
+
+- [#1260](https://github.com/Ripple-TS/ripple/pull/1260)
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Make style scope hashes
+  unique per style block and per file. The hash was derived from the style block's
+  content alone, so two `<style>` blocks with identical CSS — in different
+  components of the same file, or in different files — collided and shared a
+  scope. The hash input now includes the filename and the line/column where the
+  `<style>` tag starts. Because the filename may be an absolute path, the hash
+  also switched from the reversible djb2 hash to the truncated SHA-256 hash so
+  file structure can't be recovered from class names in the shipped bundle.
+
+  The `filename` parameter of `parse`, `parseModule`, and the per-target `parse`
+  wrappers is now required (typed as a non-empty string), and parsing a `<style>`
+  element without one throws a clear error instead of silently seeding the hash
+  with an empty name. The prettier plugin and eslint parser pass their host's file
+  path through, falling back to a plugin-specific placeholder when formatting or
+  linting in-memory text.
+
+- Updated dependencies
+  [[`67de047`](https://github.com/Ripple-TS/ripple/commit/67de047d103f39673b25910e1a97760278820999),
+  [`1c645c8`](https://github.com/Ripple-TS/ripple/commit/1c645c8f854df23bb1271b3402d1885616b525cd),
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)]:
+  - @tsrx/core@0.1.29
+
 ## 0.1.28
 
 ### Patch Changes

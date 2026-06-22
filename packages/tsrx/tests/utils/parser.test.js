@@ -424,6 +424,24 @@ abc
 		expect(block.render.openingElement.name.name).toBe('span');
 	});
 
+	it('preserves significant whitespace before a code block in a fragment', () => {
+		const fragment = findNode('let a = <>   @{<b>123</b>}   </>;', 'JSXFragment');
+
+		expect(fragment.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXCodeBlock',
+			'JSXText',
+		]);
+		expect(fragment.children[0].value).toBe('   ');
+		expect(fragment.children[2].value).toBe('   ');
+	});
+
+	it('drops layout whitespace before a code block in a fragment', () => {
+		const fragment = findNode('let a = <>\n   @{<b>123</b>}\n</>;', 'JSXFragment');
+
+		expect(fragment.children.map((child) => child.type)).toEqual(['JSXCodeBlock']);
+	});
+
 	it('parses an @if directive inside an element nested in an expression container', () => {
 		const directive = findNode(
 			inExpressionContainer(`@if (ok) { <span>x</span> }`),
@@ -1123,6 +1141,31 @@ foo();`;
 		expect(block.body[1].declarations[0].init.regex.pattern).toBe('---');
 	});
 
+	it('parses a template literal as the sole content of a `@{ }` code block', () => {
+		const block = findNode('let c = @{ `a${x}b` };', 'JSXCodeBlock');
+
+		expect(block.type).toBe('JSXCodeBlock');
+		expect(block.render).toBeNull();
+		expect(block.body.map((child) => child.type)).toEqual(['ExpressionStatement']);
+		const template = block.body[0].expression;
+		expect(template.type).toBe('TemplateLiteral');
+		expect(template.quasis.map((quasi) => quasi.value.raw)).toEqual(['a', 'b']);
+		expect(template.expressions.map((expression) => expression.name)).toEqual(['x']);
+	});
+
+	it('parses a template literal after another statement in a `@{ }` code block', () => {
+		const block = findNode('let i = @{ const a = 1; `t${a}` };', 'JSXCodeBlock');
+
+		expect(block.body.map((child) => child.type)).toEqual([
+			'VariableDeclaration',
+			'ExpressionStatement',
+		]);
+		const template = block.body[1].expression;
+		expect(template.type).toBe('TemplateLiteral');
+		expect(template.quasis.map((quasi) => quasi.value.raw)).toEqual(['t', '']);
+		expect(template.expressions.map((expression) => expression.name)).toEqual(['a']);
+	});
+
 	it('does not treat tag-looking text inside setup regex literals as markup', () => {
 		const returned = getReturned(`function App() { return <div>@{
 			const x = /<span>/
@@ -1429,6 +1472,7 @@ foo();`;
 			'JSXExpressionContainer',
 			'JSXText',
 			'JSXFragment',
+			'JSXText',
 		]);
 		expect(level2.children[0].expression.name).toBe('a');
 
@@ -1439,6 +1483,81 @@ foo();`;
 		expect(level4.type).toBe('JSXFragment');
 		expect(level4.children.map((child) => child.type)).toEqual(['JSXExpressionContainer']);
 		expect(level4.children[0].expression.name).toBe('a');
+	});
+
+	it('parses sibling fragments separated by template text', () => {
+		const withText = findNode('let a = <> <>123</> 2 <>456</> </>', 'JSXFragment');
+		expect(withText.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+		]);
+		expect(withText.children[0].value).toBe(' ');
+		expect(withText.children[2].value).toBe(' 2 ');
+		expect(withText.children[4].value).toBe(' ');
+
+		const emptySiblings = findNode('let b = <> <></> 2 <></> </>', 'JSXFragment');
+		expect(emptySiblings.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+		]);
+		expect(withText.children[0].value).toBe(' ');
+		expect(withText.children[2].value).toBe(' 2 ');
+		expect(withText.children[4].value).toBe(' ');
+	});
+
+	it('keeps an inline space between adjacent sibling fragments', () => {
+		const fragment = findNode('let c = <> <></>  <></>something </>', 'JSXFragment');
+		expect(fragment.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+		]);
+		expect(fragment.children[2].value).toBe('  ');
+		expect(fragment.children[4].value).toBe('something ');
+	});
+
+	it('keeps inline spaces around and between sibling elements', () => {
+		const pre = findElement('const a = <pre> <b>1</b> <b>2</b> </pre>;', 'pre');
+		expect(pre.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXElement',
+			'JSXText',
+			'JSXElement',
+			'JSXText',
+		]);
+		expect(pre.children[0].value).toBe(' ');
+		expect(pre.children[2].value).toBe(' ');
+		expect(pre.children[4].value).toBe(' ');
+	});
+
+	it('parses a text-then-element sibling after newline-separated elements', () => {
+		const pre = findElement('let a = <pre><b>2</b>\n<b>3</b>1<b>4</b></pre>;', 'pre');
+		expect(pre.children.map((child) => child.type)).toEqual([
+			'JSXElement',
+			'JSXElement',
+			'JSXText',
+			'JSXElement',
+		]);
+		expect(pre.children[2].value).toBe('1');
+	});
+
+	it('parses indented multi-line markup with a text-then-element sibling', () => {
+		const source =
+			'let a  = <pre> \n\n    <b>2</b>   \n    <b>3</b> \n    \n    1<b>4</b>\n</pre>;';
+		const pre = findElement(source, 'pre');
+		expect(pre.children.filter((child) => child.type === 'JSXElement')).toHaveLength(3);
+		const text = pre.children.find(
+			(child) => child.type === 'JSXText' && child.value.includes('1'),
+		);
+		expect(text.value).toBe('1');
 	});
 
 	it('parses parenthesized conditional JSX spread attributes in render output', () => {

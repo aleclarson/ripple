@@ -58,10 +58,8 @@ export function runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, na
 				{ loose: true },
 			);
 
-			// Bare expressions as fragment children would read as JSX text
-			// (`<>{a}a</>`), hiding the identifiers from TypeScript.
 			expect(result.errors).toEqual([]);
-			expect(result.code).toContain('<>{a}{a}</>');
+			expect(result.code).toContain('{a} {a}');
 			expect(result.code).not.toContain('<>{a}a</>');
 		});
 
@@ -243,6 +241,62 @@ export function runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, na
 
 				expect(result.errors.map((error) => error.message)).toContain(TSRX_TEMPLATE_RETURN_ERROR);
 			}
+		});
+
+		it('rejects return statements inside @try/@catch/@pending blocks', () => {
+			for (const source of [
+				`function Test() @{
+					@try {
+						return <div>{'ok'}</div>;
+					} @catch (e) {
+						<div>{'err'}</div>
+					}
+				}`,
+				`function Test() @{
+					@try {
+						<div>{'ok'}</div>
+					} @catch (e) {
+						return <div>{'err'}</div>;
+					}
+				}`,
+				`function Test() @{
+					@try {
+						<div>{'ok'}</div>
+					} @pending {
+						return <div>{'loading'}</div>;
+					} @catch (e) {
+						<div>{'err'}</div>
+					}
+				}`,
+				`function Test() @{
+					@try {
+						return;
+					} @catch (e) {
+						<div>{'err'}</div>
+					}
+				}`,
+			]) {
+				const result = compile_to_volar_mappings(source, 'App.tsrx');
+
+				expect(result.errors.map((error) => error.message)).toContain(TSRX_TEMPLATE_RETURN_ERROR);
+			}
+		});
+
+		it('allows @try/@catch/@pending blocks without return statements', () => {
+			const result = compile_to_volar_mappings(
+				`function Test() @{
+					@try {
+						<div>{'ok'}</div>
+					} @pending {
+						<div>{'loading'}</div>
+					} @catch (e) {
+						<div>{'err'}</div>
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(result.errors).toEqual([]);
 		});
 
 		it('allows return statements inside nested ordinary functions in statement containers', () => {
@@ -621,6 +675,55 @@ export function runSharedTsxExpressionTsrxTests({ compile, name, classAttrName }
 				expect(code, source).not.toContain(rawNode);
 			}
 		});
+
+		it('lowers @if as the left operand of a logical expression', () => {
+			const { code } = compile(
+				`function App() {
+						let c = (@if (true) { <>{1}</> }) || 'default';
+						return <div>{c}</div>;
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain(`|| 'default'`);
+			expect(code).not.toContain('@if');
+			expect(code).not.toContain('JSXIfExpression');
+		});
+
+		it('lowers @switch as an operand of a logical expression', () => {
+			const { code } = compile(
+				`function App({ status }: { status: string }) {
+						const view =
+							fallback ||
+							@switch (status) {
+								@case 'loading': { <p>Loading...</p> }
+								@default: { <p>Unknown status.</p> }
+							};
+						return <div>{view}</div>;
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('Loading...');
+			expect(code).toContain('Unknown status.');
+			expect(code).not.toContain('@switch');
+			expect(code).not.toContain('JSXSwitchExpression');
+		});
+
+		it('lowers @if as a conditional (ternary) branch', () => {
+			const { code } = compile(
+				`function App({ ok }: { ok: boolean }) {
+						const view = ok
+							? @if (ok) { <p>All good</p> } @else { <p>Broke</p> }
+							: <span>n/a</span>;
+						return <div>{view}</div>;
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('All good');
+			expect(code).toContain('Broke');
+			expect(code).toContain('n/a');
+			expect(code).not.toContain('@if');
+			expect(code).not.toContain('JSXIfExpression');
+		});
 	});
 }
 
@@ -841,6 +944,226 @@ export function runSharedNestedLazyDestructuringTests({ compile, name }) {
 }
 
 /**
+ * Lazy `&{...}` / `&[...]` declarations inside a nested `@{ ... }` code block or a
+ * `@if` / `@for` / `@switch` directive body must be rewritten exactly as they are
+ * in a flat component body. These scopes lower to generated function boundaries
+ * (scoped IIFEs, `.map(...)` callbacks, `<Show>` / `<For>` / `<Match>` render
+ * closures), so the lazy transform has to descend into them rather than stopping
+ * at the component function. Assertions check only the framework-agnostic member
+ * accessor (`__lazy0.x` / `__lazy0[0]`), so they hold whichever way each target
+ * lowers the control flow.
+ *
+ * @param {Pick<CompileHarness, 'compile' | 'name'>} harness
+ */
+export function runSharedLazyScopeNestingTests({ compile, name }) {
+	describe(`[${name}] lazy destructuring across nested scopes`, () => {
+		it('transforms lazy object destructuring inside a nested code block', () => {
+			const { code } = compile(
+				`export function App(props) @{
+					@{
+						let &{ name } = props;
+						<div>{name}</div>
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0 = props');
+			expect(code).toContain('__lazy0.name');
+			// The lazy declaration must not survive as a plain destructure.
+			expect(code).not.toContain('let { name } = props');
+		});
+
+		it('transforms lazy array destructuring inside a nested code block', () => {
+			const { code } = compile(
+				`export function App() @{
+					@{
+						let &[val] = getState();
+						<div>{val}</div>
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0 = getState()');
+			expect(code).toContain('__lazy0[0]');
+			expect(code).not.toContain('let [val] = getState()');
+		});
+
+		it('transforms lazy destructuring through two levels of nested code blocks', () => {
+			const { code } = compile(
+				`export function App(props) @{
+					@{
+						@{
+							let &{ a } = props;
+							<div>{a}</div>
+						}
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0 = props');
+			expect(code).toContain('__lazy0.a');
+		});
+
+		it('transforms lazy destructuring declared inside a @for body', () => {
+			const { code } = compile(
+				`export function App(props) @{
+					@for (const row of props.rows) {
+						let &{ name } = row;
+						<div>{name}</div>
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0 = row');
+			expect(code).toContain('__lazy0.name');
+			expect(code).not.toContain('let { name } = row');
+		});
+
+		it('transforms lazy destructuring declared inside a @if body', () => {
+			const { code } = compile(
+				`export function App(props) @{
+					@if (props.show) {
+						let &{ label } = props;
+						<div>{label}</div>
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0 = props');
+			expect(code).toContain('__lazy0.label');
+			expect(code).not.toContain('let { label } = props');
+		});
+
+		it('transforms lazy destructuring declared inside a @switch case body', () => {
+			const { code } = compile(
+				`export function App(props) @{
+					let &{ kind } = props;
+					@switch (kind) {
+						@case 'a': {
+							let &{ value } = props;
+							<div>{value}</div>
+						}
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0.kind');
+			expect(code).toContain('__lazy1.value');
+			expect(code).not.toContain('let { value } = props');
+		});
+
+		it('rewrites an outer lazy binding referenced inside a nested code block', () => {
+			const { code } = compile(
+				`export function App(props) @{
+					let &{ name } = props;
+					@{
+						<div>{name}</div>
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0 = props');
+			expect(code).toContain('__lazy0.name');
+		});
+
+		it('keeps a nested binding that shadows an outer lazy name unrewritten', () => {
+			const { code } = compile(
+				`export function App(props) @{
+					let &{ name } = props;
+					@{
+						let name = 'x';
+						<div>{name}</div>
+					}
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain("let name = 'x'");
+			// The shadowed reference resolves to the local `name`, never the lazy source.
+			expect(code).not.toContain('__lazy0.name');
+		});
+	});
+}
+
+/**
+ * A lazy binding used as a JSX element/component name must be rewritten to a JSX
+ * member expression in production output (`<Item>` → `<__lazy0.Item>`), because
+ * the bound name is no longer a local — it is a property of the synthesized lazy
+ * source. The element shape is identical across targets, so the assertions are
+ * framework-agnostic.
+ *
+ * @param {Pick<CompileHarness, 'compile' | 'name'>} harness
+ */
+export function runSharedLazyJsxNameTests({ compile, name }) {
+	describe(`[${name}] lazy binding as a JSX name`, () => {
+		it('rewrites a lazy object param used as a component name', () => {
+			const { code } = compile(
+				`export function Comp(&{ Item }) @{
+					<Item></Item>
+				}`,
+				'App.tsrx',
+			);
+
+			// Untyped lazy object param is left implicitly `any` — no synthesized type.
+			expect(code).toContain('function Comp(__lazy0)');
+			expect(code).not.toContain('{ Item: any }');
+			expect(code).toContain('<__lazy0.Item>');
+			expect(code).toContain('</__lazy0.Item>');
+			// The bare element name must not survive — it would reference a local that
+			// no longer exists (the param is now `__lazy0`).
+			expect(code).not.toContain('<Item>');
+			expect(code).not.toContain('</Item>');
+		});
+
+		it('rewrites a self-closing lazy component name', () => {
+			const { code } = compile(
+				`export function Comp(&{ Item }) @{
+					<Item />
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('<__lazy0.Item />');
+			expect(code).not.toContain('<Item ');
+		});
+
+		it('rewrites a lazy component name declared with let', () => {
+			const { code } = compile(
+				`export function Comp(props) @{
+					let &{ Item } = props;
+					<Item></Item>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('__lazy0 = props');
+			expect(code).toContain('<__lazy0.Item>');
+			expect(code).not.toContain('<Item>');
+		});
+
+		it('rewrites a lazy component name alongside its attributes and children', () => {
+			const { code } = compile(
+				`export function Comp(&{ Item, label }) @{
+					<Item title={label}>{label}</Item>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('<__lazy0.Item');
+			expect(code).toContain('title={__lazy0.label}');
+			expect(code).toContain('{__lazy0.label}');
+		});
+	});
+}
+
+/**
  * @param {Pick<CompileHarness, 'compile' | 'name'>} harness
  */
 export function runSharedFragmentExpressionRenderTests({ compile, name }) {
@@ -853,7 +1176,7 @@ export function runSharedFragmentExpressionRenderTests({ compile, name }) {
 				'App.tsrx',
 			);
 
-			expect(code).toContain('return "Hello";');
+			expect(code).toContain('return <>{"Hello"}</>;');
 		});
 
 		it('renders lone expression fragment shorthand inside conditional render bodies', () => {
@@ -1097,9 +1420,9 @@ export function runSharedSwitchFallthroughTests({ compile, name }) {
 }
 
 /**
- * Shared component-loop regressions. Vue does not share the full JSX output
- * suite because its component export shape differs, but it should still share
- * these component-body validation rules.
+ * Shared component-loop regressions. Runs as part of `runSharedCompileTests`;
+ * exported separately so harnesses that only cover component-body validation
+ * can run it on its own.
  *
  * @param {Pick<CompileHarness, 'compile' | 'name'>} harness
  */
@@ -1535,7 +1858,8 @@ export function runSharedClassFunctionComponentTests({ compile, compile_to_volar
  * Shared compile-output regressions. These assert observable properties of
  * the generated code (not source-map structure) that every JSX target should
  * satisfy across whatever `transformElement` hook the platform wires in.
- * Vue should be excluded from running these
+ * Target-specific shapes (Vue's `defineVaporComponent` export wrapper and
+ * Suspense slot fallbacks) are guarded inline with `it.runIf`.
  *
  * @param {CompileHarness} harness
  */
@@ -1553,6 +1877,8 @@ export function runSharedCompileTests({
 
 	runSharedComponentLoopControlFlowTests({ compile, name });
 	runSharedNestedLazyDestructuringTests({ compile, name });
+	runSharedLazyScopeNestingTests({ compile, name });
+	runSharedLazyJsxNameTests({ compile, name });
 
 	describe(`[${name}] fragment expression children`, () => {
 		// A bare expression placed directly as a JSX child reads as JSX text
@@ -1568,7 +1894,9 @@ export function runSharedCompileTests({
 				'App.tsrx',
 			);
 
-			expect(code).toContain('<>{a}{b}</>');
+			// The inline space between the two expressions is interior, so it stays
+			// bare; only fragment-edge whitespace becomes `{' '}`.
+			expect(code).toContain('<>{a} {b}</>');
 			expect(code).not.toContain('<>{a}b</>');
 		});
 
@@ -1581,16 +1909,83 @@ export function runSharedCompileTests({
 				'App.tsrx',
 			);
 
-			expect(code).toContain('<>{a}{a}</>');
+			expect(code).toContain('{a} {a}');
 			expect(code).not.toContain('<>{a}a</>');
 			expect(code).not.toContain('<>aa</>');
+		});
+
+		// Regression: an empty fragment as a container's expression must stay
+		// `{<></>}`, not be lowered to the bare `{null}` of expression position.
+		it('keeps an empty fragment inside a container as a fragment', () => {
+			const { code } = compile(
+				`function App() @{
+					<b>{<></>}</b>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('<b>{<></>}</b>');
+			expect(code).not.toContain('{null}');
+		});
+
+		it('keeps an empty fragment in expression position as a fragment', () => {
+			const { code } = compile(
+				`function App() @{
+					let b = <></>;
+					<div />
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('let b = <></>;');
+			expect(code).not.toContain('let b = null;');
+		});
+
+		it('keeps the outer fragment of a nested empty fragment in expression position', () => {
+			const { code } = compile(
+				`function App() @{
+					let c = <><></></>;
+					<div />
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('let c = <><></></>;');
+		});
+
+		it('keeps an empty expression container fragment as a fragment in expression position', () => {
+			const { code } = compile(
+				`function App() @{
+					let c = <>{}</>;
+					<div />
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('let c = <></>;');
+			expect(code).not.toMatch(/let c = ;/);
+		});
+
+		it('keeps a comment-only container fragment as a fragment in expression position', () => {
+			const { code } = compile(
+				`function App() @{
+					let c = <>{/* note */}</>;
+					<div />
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('let c = <></>;');
+			expect(code).not.toMatch(/let c = ;/);
 		});
 	});
 
 	describe(`[${name}] component export shapes`, () => {
-		// Function export prefix preservation should stay identical across
-		// targets. Any future change that double-exports, strips a default,
-		// or otherwise changes the declaration wrapper fails here first.
+		// Export prefix preservation should stay stable per target. Vue wraps
+		// every component in `defineVaporComponent(...)`; the other targets
+		// keep the authored function declaration. Any future change that
+		// double-exports, strips a default, or otherwise changes the
+		// declaration wrapper fails here first.
 
 		it('keeps plain components local unless explicitly exported', () => {
 			const { code } = compile(
@@ -1606,7 +2001,7 @@ export function runSharedCompileTests({
 			expect(code).not.toContain('export default function App');
 		});
 
-		it('preserves named component exports without double-exporting', () => {
+		it.runIf(name !== 'vue')('preserves named component exports without double-exporting', () => {
 			const { code } = compile(
 				`export function App() @{
 					<div>{'Hello world'}</div>
@@ -1619,7 +2014,23 @@ export function runSharedCompileTests({
 			expect(code).not.toContain('export export function App()');
 		});
 
-		it('preserves default component exports', () => {
+		it.runIf(name === 'vue')(
+			'wraps named component exports in defineVaporComponent without double-exporting',
+			() => {
+				const { code } = compile(
+					`export function App() @{
+						<div>{'Hello world'}</div>
+					}`,
+					'App.tsrx',
+				);
+
+				expect(code).toContain('export const App = defineVaporComponent(function App()');
+				expect(code).toContain("{'Hello world'}");
+				expect(code).not.toContain('export function App');
+			},
+		);
+
+		it.runIf(name !== 'vue')('preserves default component exports', () => {
 			const { code } = compile(
 				`export default function App() @{
 					<div>{'Hello world'}</div>
@@ -1628,6 +2039,18 @@ export function runSharedCompileTests({
 			);
 
 			expect(code).toContain('export default function App()');
+			expect(code).toContain("{'Hello world'}");
+		});
+
+		it.runIf(name === 'vue')('wraps default component exports in defineVaporComponent', () => {
+			const { code } = compile(
+				`export default function App() @{
+					<div>{'Hello world'}</div>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('export default defineVaporComponent(function App()');
 			expect(code).toContain("{'Hello world'}");
 		});
 
@@ -1643,7 +2066,11 @@ export function runSharedCompileTests({
 				'App.tsrx',
 			);
 
-			expect(code).toContain('export function MyComponent<Item>(props: Props<Item>)');
+			expect(code).toContain(
+				name === 'vue'
+					? 'export const MyComponent = defineVaporComponent(function MyComponent<Item>(props: Props<Item>)'
+					: 'export function MyComponent<Item>(props: Props<Item>)',
+			);
 		});
 
 		it('preserves generic type arguments on JSX component tags', () => {
@@ -1680,6 +2107,9 @@ export function runSharedCompileTests({
 	});
 
 	describe(`[${name}] component try pending fallbacks`, () => {
+		// Vue lowers `@pending` to a Suspense slot object, the other targets to
+		// a `fallback={...}` prop — an empty block must not emit a fallback slot
+		// or a fallback prop respectively.
 		it('allows empty pending blocks as null fallbacks', () => {
 			const { code } = compile(
 				`export function App() @{
@@ -1690,8 +2120,16 @@ export function runSharedCompileTests({
 				'App.tsrx',
 			);
 
-			expect(code).toContain('fallback={null}');
 			expect(code).toContain("{'content'}");
+			if (name === 'vue') {
+				expect(code).toContain('Suspense');
+				expect(code).toContain('v-slots=');
+				expect(code).toContain('default: () =>');
+				expect(code).not.toContain('fallback: () =>');
+				expect(code).not.toContain('fallback={');
+			} else {
+				expect(code).toContain('fallback={null}');
+			}
 		});
 	});
 
@@ -1776,8 +2214,8 @@ export function runSharedCompileTests({
 				'App.tsrx',
 			);
 
-			expect(code).toContain('"Hello Ripple"');
-			expect(code).toContain('"Hello React"');
+			expect(code).toContain('Hello Ripple');
+			expect(code).toContain('Hello React');
 			expect(code).not.toContain('return null;');
 		});
 
@@ -1972,7 +2410,7 @@ export function optionalFn(bar: string, baz?: string) {
 			);
 
 			expect(code).toContain("const visible = 'render me'");
-			expect(code).toContain('return visible;');
+			expect(code).toContain('return <>{visible}</>;');
 			expect(code).not.toMatch(/\{\n\s+visible;\n\s+\}/);
 		});
 
@@ -2115,7 +2553,7 @@ export function optionalFn(bar: string, baz?: string) {
 				`class Foo { bar() { const props = {}; return <><Bar {...props} /></>; } }`,
 				'App.tsrx',
 			);
-			expect(code).toContain('return <Bar {...props} />;');
+			expect(code).toContain('return <><Bar {...props} /></>;');
 			expect(code).not.toContain('<tsx');
 		});
 
@@ -2125,19 +2563,25 @@ export function optionalFn(bar: string, baz?: string) {
 			// opens a block/object literal. The JSXExpressionContainer must
 			// be unwrapped to its inner expression in expression position.
 			const { code } = compile(`class Foo { bar() { return <>{'Hello'}</>; } }`, 'App.tsrx');
-			expect(code).toContain("return 'Hello';");
+			expect(code).toContain("return <>{'Hello'}</>;");
 			expect(code).not.toContain("return {'Hello'}");
 		});
 
 		it('unwraps a JSX fragment containing a single identifier expression', () => {
 			const { code } = compile(`class Foo { bar() { const x = 1; return <>{x}</>; } }`, 'App.tsrx');
-			expect(code).toContain('return x;');
+			expect(code).toContain('return <>{x}</>;');
 			expect(code).not.toContain('return {x}');
 		});
 
 		it('unwraps text-only JSX fragments to strings', () => {
 			const { code } = compile(`class Foo { bar() { return <>plain text</>; } }`, 'App.tsrx');
 			expect(code).toContain('plain text');
+			expect(code).not.toContain('return null;');
+		});
+
+		it('keeps an empty authored fragment as render output (not null)', () => {
+			const { code } = compile(`class Foo { bar() { return <></>; } }`, 'App.tsrx');
+			expect(code).toContain('return <></>;');
 			expect(code).not.toContain('return null;');
 		});
 
@@ -2150,8 +2594,10 @@ export function optionalFn(bar: string, baz?: string) {
 				'App.tsrx',
 			);
 
-			expect(code).toContain('const x = "Hello world";');
-			expect(code).toContain('return x;');
+			// An authored `<>…</>` is kept verbatim in value position (var-init), so the
+			// text fragment stays a fragment instead of unwrapping to a bare string.
+			expect(code).toContain('const x = <>{"Hello world"}</>;');
+			expect(code).toContain('return <>{x}</>;');
 		});
 
 		it('parses backtick text inside fragments as JSX text', () => {
@@ -2194,17 +2640,85 @@ export function optionalFn(bar: string, baz?: string) {
 
 		it('unwraps a JSX fragment whose single child is already a fragment', () => {
 			const { code } = compile(`class Foo { bar() { return <><>{'x'}</></>; } }`, 'App.tsrx');
-			expect(code).toContain("return 'x';");
+			expect(code).toContain("return <>{'x'}</>;");
 		});
 
 		it('unwraps an explicit JSX fragment with a single expression', () => {
 			const { code } = compile(`class Foo { bar() { return <>{'Hello'}</>; } }`, 'App.tsrx');
-			expect(code).toContain("return 'Hello';");
+			expect(code).toContain("return <>{'Hello'}</>;");
 		});
 
 		it('unwraps an explicit JSX fragment with a single element', () => {
 			const { code } = compile(`class Foo { bar() { return <><div>hi</div></>; } }`, 'App.tsrx');
 			expect(code).toContain('hi');
+		});
+
+		// A fragment is always a truthy element, but its single child may be falsy.
+		// In a render-output slot the collapse is invisible (covered above), but when
+		// the fragment is COMBINED into an expression the collapse flips meaning:
+		// `<>{0}</> || 'd'` renders `0`, while `0 || 'd'` renders `'d'`. Keep the
+		// fragment in those positions instead of unwrapping it.
+		it('keeps a fragment combined into an expression as a fragment', () => {
+			const operand = compile(
+				`function App() { let c = <>{0}</> || 'd'; return <div>{c}</div>; }`,
+				'App.tsrx',
+			);
+			expect(operand.code).toContain('<>');
+			expect(operand.code).toContain('</>');
+			expect(operand.code).not.toMatch(/let c = 0 \|\|/);
+
+			const ternary = compile(
+				`function App({ o }: { o: boolean }) { let c = o ? <>{1}</> : <>{2}</>; return <div>{c}</div>; }`,
+				'App.tsrx',
+			);
+			expect(ternary.code).toContain('<>');
+			expect(ternary.code).not.toMatch(/\?\s*1\s*:\s*2/);
+		});
+
+		// An AUTHORED `<>…</>` is kept verbatim in a JS value position (a variable
+		// initializer, an assignment) — it must not unwrap to its single child, which
+		// turns the author's JSX into a plain value.
+		it('keeps an authored fragment in value position', () => {
+			const expr = compile(
+				`function App() { const v = <>{1}</>; return <div>{v}</div>; }`,
+				'App.tsrx',
+			);
+			expect(expr.code).toContain('<>');
+			expect(expr.code).toContain('</>');
+			expect(expr.code).not.toMatch(/const v = 1;/);
+
+			const element = compile(
+				`function App() { const v = <><span>x</span></>; return <div>{v}</div>; }`,
+				'App.tsrx',
+			);
+			expect(element.code).toContain('<>');
+			expect(element.code).toContain('<span>x</span>');
+		});
+
+		// The branches of an `@if` (`@for`/`@switch`) keep their authored fragments:
+		// `c ? <>{a}</> : <>{b}</>`, not the unwrapped `c ? a : b`. (The compiler's
+		// own wrapper around the directive still collapses it to the conditional.)
+		it('keeps authored fragments in control-flow branches', () => {
+			const { code } = compile(
+				`function App() { const xyz = @if (cond()) { <>{[1, 2, 3]}</> } @else { <>{[3, 4, 5]}</> }; return <div>{xyz}</div>; }`,
+				'App.tsrx',
+			);
+			expect(code).toContain('<>');
+			expect(code).toContain('</>');
+			expect(code).not.toMatch(/\?\s*\[1, 2, 3\]\s*:/);
+			expect(code).not.toContain('@if');
+		});
+
+		// A compiler-generated wrapper (around `@switch` used as a sole value) is NOT
+		// authored, so it still collapses to its rendered value rather than being kept.
+		it('still collapses a generated wrapper around a directive', () => {
+			const { code } = compile(
+				`function App({ s }: { s: string }) { const v = @switch (s) { @case 'a': { <p>A</p> } @default: { <p>D</p> } }; return <div>{v}</div>; }`,
+				'App.tsrx',
+			);
+			expect(code).toContain('A');
+			expect(code).toContain('D');
+			expect(code).not.toContain('@switch');
 		});
 
 		it('keeps an explicit JSX fragment with multiple children', () => {
@@ -2235,10 +2749,10 @@ export function optionalFn(bar: string, baz?: string) {
 			);
 
 			expect(code).not.toContain('return;');
-			expect(code).toMatch(/function FragmentReturn\(\) {\s+return App__static/);
-			expect(code).toMatch(/function TsxReturn\(\) {\s+return App__static/);
+			expect(code).toMatch(/function FragmentReturn\(\) {\s+return <>{App__static\d+}<\/>;/);
+			expect(code).toMatch(/function TsxReturn\(\) {\s+return <>{App__static\d+}<\/>;/);
 			expect(code).toMatch(/const App__static\d+ = <div[^>]*>tsrx<\/div>;/);
-			expect(code).toMatch(/function TsrxReturn\(\) {\s+return App__static/);
+			expect(code).toMatch(/function TsrxReturn\(\) {\s+return <>{App__static\d+}<\/>;/);
 		});
 
 		it('keeps special fragment returns inside component prop arrow functions', () => {
@@ -2792,7 +3306,7 @@ export function optionalFn(bar: string, baz?: string) {
 		// component scope, but locals with the same name must shadow — the
 		// shared `applyLazyTransforms` helper in @tsrx/core handles this.
 
-		it('gives untyped lazy object params an object-shaped generated type', () => {
+		it('leaves an untyped lazy object param implicitly any (no synthesized type)', () => {
 			const { code } = compile(
 				`export function App(&{ name, age }) @{
 					<div>{name}{age}</div>
@@ -2800,12 +3314,15 @@ export function optionalFn(bar: string, baz?: string) {
 				'App.tsrx',
 			);
 
-			expect(code).toContain('function App(__lazy0: { name: any; age: any })');
+			// No type was written, so the generated param carries none either — it is
+			// left implicitly `any` rather than getting a fabricated `{ … : any }`.
+			expect(code).toContain('function App(__lazy0)');
+			expect(code).not.toContain('{ name: any; age: any }');
 			expect(code).toContain('__lazy0.name');
 			expect(code).toContain('__lazy0.age');
 		});
 
-		it('uses the source property name for aliased lazy object params', () => {
+		it('reads an aliased lazy object binding off its source property name', () => {
 			const { code } = compile(
 				`export function App(&{ name: displayName }) @{
 					<div>{displayName}</div>
@@ -2813,7 +3330,8 @@ export function optionalFn(bar: string, baz?: string) {
 				'App.tsrx',
 			);
 
-			expect(code).toContain('function App(__lazy0: { name: any })');
+			// The binding `displayName` resolves through the source property `name`.
+			expect(code).toContain('function App(__lazy0)');
 			expect(code).toContain('__lazy0.name');
 			expect(code).not.toContain('__lazy0.displayName');
 		});
@@ -3154,7 +3672,7 @@ export function optionalFn(bar: string, baz?: string) {
 			const { code, css, cssHash } = compile(
 				`export function App() @{
 					<>
-						<div>{'Hello world'}</div>
+						<div ${generatedClassAttrName}="div">{'Hello world'}</div>
 
 						<style>
 							.div { color: red; }
@@ -3166,7 +3684,7 @@ export function optionalFn(bar: string, baz?: string) {
 
 			expect(css).not.toBe('');
 			expect(code).toContain("{'Hello world'}");
-			expect(code).toContain(`${generatedClassAttrName}="${cssHash}"`);
+			expect(code).toContain(`${generatedClassAttrName}="div ${cssHash}"`);
 			expect(css).toContain(`.div.${cssHash}`);
 			expect(css).toContain('color: red;');
 		});
@@ -3330,6 +3848,154 @@ export function optionalFn(bar: string, baz?: string) {
 
 			expect(css).not.toBe('');
 			expect(code).toContain('accent-tone');
+		});
+
+		it('lowers style expressions inside an expression-position code block', () => {
+			const { code, css, cssHash } = compile(
+				`const Test = @{
+						const styles = <style>
+							.card { margin: 5px; }
+						</style>;
+						<div class={styles.card} />
+					};`,
+				'App.tsrx',
+			);
+
+			expect(css).not.toBe('');
+			const hash = cssHash.split(' ').find((h) => code.includes(`${h} card`));
+			expect(hash).toBeTruthy();
+			expect(css).toContain(`.card.${hash}`);
+			expect(code).toContain(`${classAttrName}={styles.card}`);
+			expect(code).not.toContain('JSXStyleElement');
+		});
+
+		it('lowers a style expression that is the only content of an expression-position code block', () => {
+			const { code, css } = compile(
+				`const Test = @{
+						const styles = <style>
+							.card { margin: 5px; }
+						</style>
+					};`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain('margin: 5px;');
+			expect(code).toContain('card');
+		});
+
+		it('prunes style expression selectors that the class map cannot reach', () => {
+			const { css, cssHash } = compile(
+				`export function App() @{
+						const styles = <style>
+							div { color: red; }
+							.parent .card { font-weight: bold; }
+							.card {
+								color: green;
+								&:hover { color: blue; }
+							}
+							:global(.badge) { padding: 0; }
+							:global(body) { margin: 0; }
+						</style>;
+						<div class={styles.card} />
+					}`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain('/* (unused) div { color: red; }*/');
+			expect(css).toContain('/* (unused) .parent .card { font-weight: bold; }*/');
+			expect(css).toContain(`.card.${cssHash}`);
+			expect(css).toContain('&:hover { color: blue; }');
+			expect(css).toContain('.badge { padding: 0; }');
+			expect(css).not.toContain(`.badge.${cssHash}`);
+			expect(css).toContain('/* (unused) :global(body) { margin: 0; }*/');
+		});
+
+		it('matches free-standing selectors for both class and className attributes', () => {
+			const { css, cssHash } = compile(
+				`export function App() @{
+						<>
+							<div class="a">{'a'}</div>
+							<span className="b">{'b'}</span>
+
+							<style>
+								.a { color: red; }
+								.b { color: blue; }
+							</style>
+						</>
+					}`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain(`.a.${cssHash}`);
+			expect(css).toContain(`.b.${cssHash}`);
+			expect(css).not.toContain('(unused)');
+		});
+
+		it('prunes free-standing selectors that match no element', () => {
+			const { css, cssHash } = compile(
+				`export function App() @{
+						<>
+							<div ${generatedClassAttrName}="card">{'Foo'}</div>
+
+							<style>
+								div { color: red; }
+								.card { color: green; }
+								span { color: gray; }
+								:global(.test) { color: black; }
+							</style>
+						</>
+					}`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain(`div.${cssHash}`);
+			expect(css).toContain(`.card.${cssHash}`);
+			expect(css).toContain('/* (unused) span { color: gray; }*/');
+			expect(css).toContain('.test { color: black; }');
+		});
+
+		it('keeps descendant selectors that match across nesting and control flow', () => {
+			// Combinator selectors (`.card h2`) match through each element's
+			// ancestor chain. Pruning runs before the transform walker stamps
+			// paths onto template nodes, so element collection has to record the
+			// chain itself — regression: every combinator selector was marked
+			// unused in the shared JSX targets.
+			const { css, cssHash } = compile(
+				`export function App({ ready }: { ready: boolean }) @{
+					<>
+						<section ${generatedClassAttrName}="card">
+							<h2>{'title'}</h2>
+
+							@if (ready) {
+								<ul>
+									<li>{'item'}</li>
+								</ul>
+							}
+						</section>
+
+						<style>
+							.card {
+								padding: 1rem;
+							}
+							.card h2 {
+								margin: 0;
+							}
+							.card ul {
+								margin: 0;
+							}
+							.card ol {
+								margin: 0;
+							}
+						</style>
+					</>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain(`.card.${cssHash}`);
+			expect(css).toContain(`.card.${cssHash} h2:where(.${cssHash})`);
+			expect(css).toContain(`.card.${cssHash} ul:where(.${cssHash})`);
+			expect(css).toContain('/* (unused) .card ol');
 		});
 	});
 

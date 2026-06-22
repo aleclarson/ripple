@@ -56,11 +56,11 @@ export const parsers = {
 		astFormat: 'ripple-ast',
 		/**
 		 * @param {string} text
-		 * @param {ParserOptions<AST.Node | AST.CSS.StyleSheet>} _options
+		 * @param {ParserOptions<AST.Node | AST.CSS.StyleSheet>} options
 		 * @returns {AST.Program}
 		 */
-		parse(text, _options) {
-			return parseModule(text);
+		parse(text, options) {
+			return parseModule(text, options.filepath || 'PrettierPlugin.tsrx');
 		},
 
 		/**
@@ -6357,7 +6357,18 @@ function printJSXCodeBlock(node, path, options, print) {
  * @returns {Doc | Doc[]}
  */
 function printJSXAttribute(attr, path, options, print) {
-	const name = /** @type {ESTreeJSX.JSXIdentifier} */ (attr.name).name;
+	// `attr.name` is either a JSXIdentifier (regular `class`, `id`, ...) or a
+	// JSXNamespacedName (`xlink:href`, `xmlns:xlink`, ...). The previous cast
+	// to JSXIdentifier yielded a raw AST node as `name` for namespaced attrs,
+	// which then leaked into the doc tree and crashed prettier's traversal
+	// with `Unexpected doc.type 'JSXIdentifier'` (see svg-attributes.tsrx +
+	// tsrx-features.tsrx fixtures). Mirror printJSXElementName's logic.
+	const name =
+		attr.name.type === 'JSXNamespacedName'
+			? /** @type {ESTreeJSX.JSXNamespacedName} */ (attr.name).namespace.name +
+				':' +
+				/** @type {ESTreeJSX.JSXNamespacedName} */ (attr.name).name.name
+			: /** @type {ESTreeJSX.JSXIdentifier} */ (attr.name).name;
 
 	if (attr.shorthand) {
 		return ['{', name, '}'];

@@ -1,5 +1,45 @@
 # Changelog
 
+## 2.0.35
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ripple-ts/language-server@0.3.84
+  - @tsrx/typescript-plugin@0.3.84
+
+## 2.0.34
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @tsrx/typescript-plugin@0.3.83
+  - @ripple-ts/language-server@0.3.83
+
+## 2.0.33
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ripple-ts/language-server@0.3.82
+  - @tsrx/typescript-plugin@0.3.82
+
+## 2.0.32
+
+### Patch Changes
+
+- [`aee9f25`](https://github.com/Ripple-TS/ripple/commit/aee9f250205f61eb862f29fb55e482302e34d8de)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Fix grammar regresssion in @
+  control flow blocks
+
+## 2.0.31
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ripple-ts/language-server@0.3.81
+  - @tsrx/typescript-plugin@0.3.81
+
 ## 2.0.30
 
 ### Patch Changes

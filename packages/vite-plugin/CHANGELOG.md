@@ -1,5 +1,55 @@
 # @ripple-ts/vite-plugin
 
+## 0.3.84
+
+### Patch Changes
+
+- Updated dependencies
+  [[`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)]:
+  - @tsrx/ripple@0.1.32
+  - @ripple-ts/adapter@0.3.84
+
+## 0.3.83
+
+### Patch Changes
+
+- Updated dependencies
+  [[`3d93339`](https://github.com/Ripple-TS/ripple/commit/3d93339e851818b547c43c29c8965700c069b037),
+  [`5646eb4`](https://github.com/Ripple-TS/ripple/commit/5646eb4e4c101b34100acf30ea57ad4065a47720),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)]:
+  - @tsrx/ripple@0.1.31
+  - @ripple-ts/adapter@0.3.83
+
+## 0.3.82
+
+### Patch Changes
+
+- [`67f3794`](https://github.com/Ripple-TS/ripple/commit/67f3794d2f1ffd55dd23a47327d925d9a76a4171)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Compose `RenderRoute` layouts
+  during client hydration. The generated client entry hydrated the bare page
+  component, so a route's `layout` only existed in the server-rendered HTML: the
+  layout component never ran in the browser, its CSS was missing from the client
+  graph, and once the SSR style block was removed after hydration the layout's
+  styles disappeared (visible as a flash of unstyled content). The client entry
+  now loads the layout module and wraps the page the same way the server does, and
+  layout entries are included in the client build's static route imports so their
+  CSS is bundled.
+- Updated dependencies []:
+  - @tsrx/ripple@0.1.30
+  - @ripple-ts/adapter@0.3.82
+
+## 0.3.81
+
+### Patch Changes
+
+- Updated dependencies
+  [[`3b6fb73`](https://github.com/Ripple-TS/ripple/commit/3b6fb73170d4ad6a383befdda951ce0da4fcbb46),
+  [`1c645c8`](https://github.com/Ripple-TS/ripple/commit/1c645c8f854df23bb1271b3402d1885616b525cd),
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)]:
+  - @tsrx/ripple@0.1.29
+  - @ripple-ts/adapter@0.3.81
+
 ## 0.3.80
 
 ### Patch Changes

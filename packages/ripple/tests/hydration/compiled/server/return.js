@@ -3,7 +3,6 @@ import * as _$_ from 'ripple/internal/server';
 
 export function GuardReturnRenders() {
 	return _$_.tsrx_element(() => {
-		var return_guard = false;
 		const ready = true;
 
 		if (!ready) {
@@ -11,28 +10,16 @@ export function GuardReturnRenders() {
 		}
 
 		_$_.regular_block(() => {
-			_$_.output_push('<!--[-->');
+			let __out = '';
 
-			if (!return_guard) {
-				_$_.output_push('<div');
-				_$_.output_push(' class="ready"');
-				_$_.output_push('>');
-
-				{
-					_$_.output_push('ready');
-				}
-
-				_$_.output_push('</div>');
-			}
-
-			_$_.output_push('<!--]-->');
+			__out += '<div class="ready">ready</div>';
+			_$_.output_push(__out);
 		});
 	});
 }
 
 export function GuardReturnNull() {
 	return _$_.tsrx_element(() => {
-		var return_guard = false;
 		const ready = false;
 
 		if (!ready) {
@@ -40,21 +27,10 @@ export function GuardReturnNull() {
 		}
 
 		_$_.regular_block(() => {
-			_$_.output_push('<!--[-->');
+			let __out = '';
 
-			if (!return_guard) {
-				_$_.output_push('<div');
-				_$_.output_push(' class="ready"');
-				_$_.output_push('>');
-
-				{
-					_$_.output_push('ready');
-				}
-
-				_$_.output_push('</div>');
-			}
-
-			_$_.output_push('<!--]-->');
+			__out += '<div class="ready">ready</div>';
+			_$_.output_push(__out);
 		});
 	});
 }

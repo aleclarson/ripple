@@ -1,5 +1,74 @@
 # @tsrx/preact
 
+## 0.1.32
+
+### Patch Changes
+
+- Updated dependencies
+  [[`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432),
+  [`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)]:
+  - @tsrx/core@0.1.32
+
+## 0.1.31
+
+### Patch Changes
+
+- [#1269](https://github.com/Ripple-TS/ripple/pull/1269)
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Disallow `return` statements
+  inside `@try`/`@catch`/`@pending` blocks.
+
+  `return` is only valid in the JS setup at the top of a `@{ … }` code block —
+  never inside a `@`-directive block. `@if`/`@for`/`@switch` already rejected
+  returns; `@try`/`@catch`/`@pending` previously allowed `return <markup>`
+  (lowering it into a reactive boundary fallback). They now reject any `return`
+  (with or without an argument) with the same
+  `Return statements are not allowed inside TSRX templates` diagnostic,
+  consistently across every target (ripple, react, preact, solid, vue). Render
+  markup by writing it as the block's output instead of returning it. Returns
+  inside nested ordinary functions are unaffected.
+
+- Updated dependencies
+  [[`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)]:
+  - @tsrx/core@0.1.31
+
+## 0.1.30
+
+### Patch Changes
+
+- Updated dependencies
+  [[`b104604`](https://github.com/Ripple-TS/ripple/commit/b10460473fec0ee68b4963cbc2a3d9d5bb3bc633)]:
+  - @tsrx/core@0.1.30
+
+## 0.1.29
+
+### Patch Changes
+
+- [#1260](https://github.com/Ripple-TS/ripple/pull/1260)
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Make style scope hashes
+  unique per style block and per file. The hash was derived from the style block's
+  content alone, so two `<style>` blocks with identical CSS — in different
+  components of the same file, or in different files — collided and shared a
+  scope. The hash input now includes the filename and the line/column where the
+  `<style>` tag starts. Because the filename may be an absolute path, the hash
+  also switched from the reversible djb2 hash to the truncated SHA-256 hash so
+  file structure can't be recovered from class names in the shipped bundle.
+
+  The `filename` parameter of `parse`, `parseModule`, and the per-target `parse`
+  wrappers is now required (typed as a non-empty string), and parsing a `<style>`
+  element without one throws a clear error instead of silently seeding the hash
+  with an empty name. The prettier plugin and eslint parser pass their host's file
+  path through, falling back to a plugin-specific placeholder when formatting or
+  linting in-memory text.
+
+- Updated dependencies
+  [[`67de047`](https://github.com/Ripple-TS/ripple/commit/67de047d103f39673b25910e1a97760278820999),
+  [`1c645c8`](https://github.com/Ripple-TS/ripple/commit/1c645c8f854df23bb1271b3402d1885616b525cd),
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)]:
+  - @tsrx/core@0.1.29
+
 ## 0.1.28
 
 ### Patch Changes

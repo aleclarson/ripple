@@ -1,5 +1,161 @@
 # @tsrx/core
 
+## 0.1.32
+
+### Patch Changes
+
+- [#1277](https://github.com/Ripple-TS/ripple/pull/1277)
+  [`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Fix parsing of sibling
+  fragments/elements separated by template text. A `<>` or `<tag>` opening that
+  follows template text (e.g. `<> <></> 2 <></> </>`) arrives as a relational `<`
+  token; the JSX re-entry fallback now pushes the same tokenizer contexts a real
+  `jsxTagStart` would, so the terminating `>` — including the lone `>` of a
+  nameless fragment — is read as `jsxTagEnd` instead of a relational operator.
+  Also preserve an inline space that separates two sibling elements on the same
+  line (`<> <></>  <></>x </>`) as significant JSX text; only layout whitespace
+  spanning a newline is still collapsed.
+
+- [#1277](https://github.com/Ripple-TS/ripple/pull/1277)
+  [`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Preserve significant
+  whitespace and keep fragments faithful in TSRX template output.
+  - Parser: a sibling after a closing tag (`<b>1</b> 2`, `<> <>x</> y <>z</> </>`)
+    now reads as JSX text at the source, so significant inline whitespace is kept
+    instead of being eaten by `skipSpace`. This fixes the leading space being
+    dropped (`" 2 "` not `"2 "`) and removes several closing-tag
+    whitespace/context workarounds.
+  - Transform: a single-text fragment used as a JSX child stays a fragment
+    (`<>123</>` instead of `{'123'}`), and an empty fragment child stays `<></>`
+    instead of `{null}`. Expression/return-position single-text fragments still
+    lower to a string (`return <>x</>` -> `return "x"`). Whitespace at a
+    fragment/element's content edges is wrapped in a `{' '}` container so it
+    survives formatting/JSX collapsing; whitespace between siblings stays bare
+    (`<b/> <i/>`). The edge rule is shared (`wrapEdgeWhitespace`) across the
+    React/Preact/Solid transforms and the Ripple to_ts view.
+  - Ripple target: whitespace-only text that is a significant inline space is kept
+    rather than dropped, so edge and inter-element spaces survive in client
+    templates and SSR output. The to_ts / Volar type-checking view now matches the
+    JSX targets — literal text stays bare (not `{"123"}`), single-text fragments
+    stay `<>123</>`, empty fragments stay `<></>` (not `{null}`), `{a}` expression
+    containers are preserved for type visibility, and edge whitespace prints as
+    single-quote `{' '}`.
+
+## 0.1.31
+
+### Patch Changes
+
+- [#1269](https://github.com/Ripple-TS/ripple/pull/1269)
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Disallow `return` statements
+  inside `@try`/`@catch`/`@pending` blocks.
+
+  `return` is only valid in the JS setup at the top of a `@{ … }` code block —
+  never inside a `@`-directive block. `@if`/`@for`/`@switch` already rejected
+  returns; `@try`/`@catch`/`@pending` previously allowed `return <markup>`
+  (lowering it into a reactive boundary fallback). They now reject any `return`
+  (with or without an argument) with the same
+  `Return statements are not allowed inside TSRX templates` diagnostic,
+  consistently across every target (ripple, react, preact, solid, vue). Render
+  markup by writing it as the block's output instead of returning it. Returns
+  inside nested ordinary functions are unaffected.
+
+- [#1269](https://github.com/Ripple-TS/ripple/pull/1269)
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Treat plain JS control flow
+  inside `@{ … }` as ordinary JavaScript that returns JSX.
+
+  Only `@`-directives (`@if`/`@for`/`@switch`/`@try`) lower to template control
+  flow. Plain `if`/`for`/`for…of`/`for…in`/`while`/`do…while`/`switch`/`try`
+  inside a code block are now compiled exactly like the same control flow in a
+  regular `function C() { …; return <jsx> }` body — their JSX returns become
+  `tsrx_element` values rather than being template-ized.
+
+  Previously these plain statements were mis-routed into the template transform:
+  on **ripple** an early-return guard produced a `_$_.if`/`_$_.switch`/`_$_.try`
+  wrapper (with dead code in the `switch`/`try` cases) and plain loops threw a
+  compile error; on **solid** they produced
+  `<Show>`/`<Switch>`/`<For>`/`<Errored>` (dropping trailing output for `try`).
+  They now stay as plain control flow, so early-return guards and loops behave
+  like normal JavaScript.
+
+  As part of this, the ripple client and server targets no longer emit the
+  `return_guard` bookkeeping variable: a plain early `return` is a real early
+  return, so subsequent template output is naturally skipped without a guard flag.
+
+  On **solid**, this means a plain guard (`if (signal()) return …`) inside a
+  component body now runs once at setup — exactly like a regular Solid component —
+  instead of being lifted into a reactive `<Show>`. Use `@if` (or another
+  `@`-directive) when you want reactive conditional rendering.
+
+## 0.1.30
+
+### Patch Changes
+
+- [`b104604`](https://github.com/Ripple-TS/ripple/commit/b10460473fec0ee68b4963cbc2a3d9d5bb3bc633)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Fix descendant and sibling
+  selectors being wrongly pruned as unused in the shared JSX targets (react,
+  preact, solid, vue).
+
+  Selector pruning for free-standing `<style>` blocks runs before the transform
+  walker has stamped ancestor paths onto template nodes, so combinator matching
+  (`.card h2`, `.card > ul`) found no ancestors and marked every such selector
+  unused. Element collection for pruning now records each element's ancestor chain
+  itself, so descendant matching works the same as in the Ripple target.
+
+## 0.1.29
+
+### Patch Changes
+
+- [#1257](https://github.com/Ripple-TS/ripple/pull/1257)
+  [`67de047`](https://github.com/Ripple-TS/ripple/commit/67de047d103f39673b25910e1a97760278820999)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Lower TSRX-only nodes inside
+  expression-position `@{ … }` code blocks. Setup statements of a code block used
+  as an expression (e.g. `const Test = @{ … }`) were carried into the generated
+  scoped IIFE verbatim without re-visiting them, so a style expression
+  (`const styles = <style> … </style>`) or a nested `@{ … }` block inside the
+  setup reached the printer as a raw `JSXStyleElement` / `JSXCodeBlock` node and
+  failed with "Not implemented: JSXStyleElement". The lowered scope is now
+  re-visited the same way function-body code blocks are, so style expressions
+  compile to their class maps (with the CSS emitted) and nested blocks lower into
+  their own scopes.
+
+- [#1262](https://github.com/Ripple-TS/ripple/pull/1262)
+  [`1c645c8`](https://github.com/Ripple-TS/ripple/commit/1c645c8f854df23bb1271b3402d1885616b525cd)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Prune unreachable selectors
+  from `<style>` blocks consistently across targets.
+
+  For a style expression (`const styles = <style> … </style>`), only standalone
+  class selectors — scoped (`.x`) or global-wrapped (`:global(.x)`) — end up in
+  the generated class map, but the emitted CSS still contained every selector.
+  Top-level selectors that don't contribute a class map entry (element selectors,
+  compound selectors, descendant chains, global tag selectors) are now commented
+  out as unused, while standalone classes, `:global(.x)` selectors, and rules
+  nested inside a reachable rule (e.g. `&:hover`) are kept.
+
+  Free-standing `<style>` blocks in the shared JSX targets (react, preact, solid,
+  vue) now prune selectors that match no element, the same way the Ripple target
+  always has, instead of keeping every authored selector. Selector matching also
+  recognizes `className` as the class attribute for React-style targets.
+
+- [#1260](https://github.com/Ripple-TS/ripple/pull/1260)
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)
+  Thanks [@leonidaz](https://github.com/leonidaz)! - Make style scope hashes
+  unique per style block and per file. The hash was derived from the style block's
+  content alone, so two `<style>` blocks with identical CSS — in different
+  components of the same file, or in different files — collided and shared a
+  scope. The hash input now includes the filename and the line/column where the
+  `<style>` tag starts. Because the filename may be an absolute path, the hash
+  also switched from the reversible djb2 hash to the truncated SHA-256 hash so
+  file structure can't be recovered from class names in the shipped bundle.
+
+  The `filename` parameter of `parse`, `parseModule`, and the per-target `parse`
+  wrappers is now required (typed as a non-empty string), and parsing a `<style>`
+  element without one throws a clear error instead of silently seeding the hash
+  with an empty name. The prettier plugin and eslint parser pass their host's file
+  path through, falling back to a plugin-specific placeholder when formatting or
+  linting in-memory text.
+
 ## 0.1.28
 
 ### Patch Changes

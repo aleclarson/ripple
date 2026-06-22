@@ -69,15 +69,27 @@ import {
 	build_index_write,
 	build_index_update,
 	expression_contains_call,
-	generate_local_name,
 	get_indexed_reactive_target,
 	rewrite_lazy_member_base,
-	should_guard_regular_js_statement,
 	strip_tsrx_style_elements,
 	unwrap_single_return_iife,
 	wrap_code_block_in_iife,
 	is_code_block_function_body,
 } from '../../utils.js';
+
+/**
+ * @param {unknown} value
+ * @returns {value is AST.TraversableAstNode}
+ */
+function is_traversable_ast_node(value) {
+	return (
+		value != null &&
+		typeof value === 'object' &&
+		!Array.isArray(value) &&
+		'type' in value &&
+		typeof value.type === 'string'
+	);
+}
 
 /**
  * Re-run CSS pruning on JSX converted into Ripple template nodes so server
@@ -214,7 +226,7 @@ function build_style_class_map_expression(node, context) {
 	}
 
 	analyzeCss(stylesheet);
-	context.state.stylesheets.push(prepareStylesheetForRender(stylesheet));
+	context.state.stylesheets.push(prepareStylesheetForRender(stylesheet, true));
 	return create_server_style_class_map_expression(stylesheet);
 }
 
@@ -927,96 +939,6 @@ function visit_ripple_fragment_element(node, context) {
 }
 
 /**
- * Builds a negated AND condition from return flag names: !__r_1 && !__r_2 && ...
- * @param {string[]} flags
- * @returns {AST.Expression}
- */
-function build_return_guard(flags) {
-	/** @type {AST.Expression} */
-	let condition = b.unary('!', b.id(flags[0]));
-	for (let i = 1; i < flags.length; i++) {
-		condition = b.logical('&&', condition, b.unary('!', b.id(flags[i])));
-	}
-	return condition;
-}
-
-/**
- * Builds a positive OR condition from return flag names.
- * @param {string[]} flags
- * @returns {AST.Expression}
- */
-function build_positive_return_guard(flags) {
-	/** @type {AST.Expression} */
-	let condition = b.id(flags[0]);
-	for (let i = 1; i < flags.length; i++) {
-		condition = b.logical('||', condition, b.id(flags[i]));
-	}
-	return condition;
-}
-
-/**
- * @param {AST.Node} node
- * @param {Map<AST.ReturnStatement, { name: string, tracked: boolean }>} return_flags
- * @returns {string | null}
- */
-function get_returned_child_flag_name(node, return_flags) {
-	const source = /** @type {AST.ReturnStatement | undefined} */ (
-		node.metadata?.returned_tsrx_return
-	);
-	return source ? (return_flags.get(source)?.name ?? null) : null;
-}
-
-/**
- * Collects all unique valid return statements from the direct children of a body.
- * @param {AST.Node[]} children
- * @returns {AST.ReturnStatement[]}
- */
-function collect_returns_from_children(children) {
-	/** @type {AST.ReturnStatement[]} */
-	const returns = [];
-	const seen = new Set();
-	for (let index = 0; index < children.length; index++) {
-		const node = children[index];
-		if (
-			node.type === 'ReturnStatement' &&
-			index !== children.length - 1 &&
-			!node.metadata?.invalid_tsrx_template_return
-		) {
-			if (!seen.has(node)) {
-				seen.add(node);
-				returns.push(node);
-			}
-		}
-		if (node.metadata?.returns) {
-			for (const ret of node.metadata.returns) {
-				if (!ret.metadata?.invalid_tsrx_template_return && !seen.has(ret)) {
-					seen.add(ret);
-					returns.push(ret);
-				}
-			}
-		}
-	}
-	return returns;
-}
-
-/**
- * @param {AST.ReturnStatement[]} returns
- * @param {Map<AST.ReturnStatement, { name: string, tracked: boolean }>} return_flags
- * @returns {string[]}
- */
-function get_unique_return_flag_names(returns, return_flags) {
-	/** @type {string[]} */
-	const names = [];
-	for (const ret of returns) {
-		const info = return_flags.get(ret);
-		if (info && !names.includes(info.name)) {
-			names.push(info.name);
-		}
-	}
-	return names;
-}
-
-/**
  * @param {AST.Node} node
  * @returns {boolean}
  */
@@ -1078,47 +1000,8 @@ function transform_variable_declaration(node, context) {
 function transform_children(children, context) {
 	const { visit, state } = context;
 	const normalized = normalize_children(children, context);
-	const effective_normalized = normalized.filter(
-		(node) => !(node.metadata?.regular_js && is_dead_native_tsrx_expression_statement(node)),
-	);
 	const should_wrap_in_regular_block =
 		state.component !== undefined && !state.skip_regular_blocks && !state.in_regular_block;
-
-	const all_returns = collect_returns_from_children(effective_normalized);
-	/** @type {Map<AST.ReturnStatement, { name: string, tracked: boolean }>} */
-	const return_flags = new Map([...(state.return_flags || [])]);
-	/** @type {AST.ReturnStatement[]} */
-	const new_returns = [];
-	for (const ret of all_returns) {
-		if (!return_flags.has(ret)) {
-			new_returns.push(ret);
-		}
-	}
-
-	if (new_returns.length > 0) {
-		const return_guard_scope =
-			(state.component && state.scopes.get(state.component)) || state.scope;
-		const info = { name: generate_local_name(return_guard_scope, 'return_guard'), tracked: false };
-		for (const ret of new_returns) {
-			return_flags.set(ret, info);
-		}
-		state.init?.push(b.var(b.id(info.name), b.false));
-	}
-
-	/** @type {string[]} */
-	let accumulated_flags = [];
-
-	/**
-	 * @param {AST.ReturnStatement[] | undefined} returns
-	 */
-	const push_return_flags = (returns) => {
-		if (!returns) return;
-		for (const name of get_unique_return_flag_names(returns, return_flags)) {
-			if (!accumulated_flags.includes(name)) {
-				accumulated_flags.push(name);
-			}
-		}
-	};
 
 	/**
 	 * @param {AST.Statement[]} statements
@@ -1146,11 +1029,7 @@ function transform_children(children, context) {
 					regular_node.type.endsWith('Statement') || regular_node.type.endsWith('Declaration')
 						? /** @type {AST.Statement} */ (regular_node)
 						: b.stmt(/** @type {AST.Expression} */ (regular_node));
-				state.init?.push(
-					accumulated_flags.length > 0 && should_guard_regular_js_statement(statement)
-						? b.if(build_return_guard(accumulated_flags), statement)
-						: statement,
-				);
+				state.init?.push(statement);
 			}
 			return;
 		}
@@ -1182,57 +1061,11 @@ function transform_children(children, context) {
 							...context,
 							state: local_state,
 						})
-					: /** @type {AST.Statement} */ (visit(node, { ...local_state, return_flags })),
+					: /** @type {AST.Statement} */ (visit(node, local_state)),
 			);
-			if (node.type === 'ReturnStatement') {
-				const info = return_flags.get(node);
-				if (info && !accumulated_flags.includes(info.name)) {
-					accumulated_flags.push(info.name);
-				}
-			}
 		} else {
-			visit(node, { ...local_state, return_flags, template_child: true });
+			visit(node, { ...local_state, template_child: true });
 		}
-	};
-
-	/** @type {AST.Node[]} */
-	let pending_group = [];
-	/** @type {string[]} */
-	let pending_guard_flags = [];
-	let pending_guard_positive = false;
-
-	const flush_pending_group = () => {
-		if (pending_group.length === 0) return;
-
-		const group = pending_group;
-		const guard_flags = pending_guard_flags;
-		const guard_positive = pending_guard_positive;
-		pending_group = [];
-		pending_guard_flags = [];
-		pending_guard_positive = false;
-
-		/** @type {AST.Statement[]} */
-		const wrapped = [];
-		const saved_init = state.init;
-		state.init = wrapped;
-
-		for (const group_node of group) {
-			process_node(group_node, { ...state, init: wrapped, in_regular_block: true });
-		}
-
-		state.init = saved_init;
-		if (wrapped.length === 0) return;
-
-		const guard = guard_positive
-			? build_positive_return_guard(guard_flags)
-			: build_return_guard(guard_flags);
-		state.init?.push(
-			...wrap_regular_block([
-				b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
-				b.if(guard, b.block(wrapped)),
-				b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))),
-			]),
-		);
 	};
 
 	/**
@@ -1258,46 +1091,15 @@ function transform_children(children, context) {
 		const node = normalized[idx];
 
 		if (is_head_element(node)) {
-			flush_pending_group();
 			continue;
 		}
-
-		if (accumulated_flags.length > 0 && should_wrap_node_in_regular_block(node)) {
-			const returned_child_flag = get_returned_child_flag_name(node, return_flags);
-			const guard_flags = returned_child_flag ? [returned_child_flag] : accumulated_flags;
-			const guard_positive = returned_child_flag !== null;
-			const guard_key = guard_flags.join(',');
-			const pending_guard_key = pending_guard_flags.join(',');
-			if (
-				pending_group.length > 0 &&
-				(pending_guard_positive !== guard_positive || pending_guard_key !== guard_key)
-			) {
-				flush_pending_group();
-			}
-			if (pending_group.length === 0) {
-				pending_guard_flags = [...guard_flags];
-				pending_guard_positive = guard_positive;
-			}
-			pending_group.push(node);
-
-			if (node.metadata?.has_return && node.metadata.returns) {
-				flush_pending_group();
-				push_return_flags(node.metadata.returns);
-			}
-			continue;
-		}
-
-		flush_pending_group();
 
 		if (should_wrap_node_in_regular_block(node)) {
 			process_wrapped_template_or_control_flow(node);
 		} else {
 			process_node(node);
 		}
-		push_return_flags(node.metadata?.has_return ? node.metadata.returns : undefined);
 	}
-
-	flush_pending_group();
 
 	const head_elements = /** @type {AST.Element[]} */ (
 		children.filter((node) => is_head_element(node))
@@ -1621,14 +1423,14 @@ const visitors = {
 	},
 
 	JSXCodeBlock(node, context) {
-		// A `@{ … }` block that produces render output but sits in a value
-		// position (assigned to a variable, returned, …) is wrapped in an
-		// immediately-invoked arrow so it flows through the function-body path
-		// (`transform_native_tsrx_function`) rather than reaching the printer as a
-		// raw `JSXCodeBlock`. The function-body guard excludes a code block that is
-		// itself the function body (handled by `transform_native_tsrx_function`).
+		// A `@{ … }` block that sits in a value position (assigned to a variable,
+		// returned, …) is wrapped in an immediately-invoked arrow so it flows
+		// through the function-body path (`transform_native_tsrx_function`) rather
+		// than reaching the printer as a raw `JSXCodeBlock` — a code-only block
+		// would otherwise print as an invalid `{ … }` "expression". The
+		// function-body guard excludes a code block that is itself the function
+		// body (handled by `transform_native_tsrx_function`).
 		if (
-			node.render != null &&
 			!is_code_block_function_body(node, context.path.at(-1)) &&
 			is_native_tsrx_value_position(context.path)
 		) {
@@ -2626,6 +2428,19 @@ const visitors = {
 	},
 
 	ReturnStatement(node, context) {
+		// A `return <markup>` produces a renderable value — lower it to a server
+		// `tsrx_element`, exactly like control flow returning JSX in a regular
+		// function. `@try`/`@pending`/`@catch` blocks legitimately return markup
+		// this way (the only `@`-blocks that allow native returns).
+		if (!context.state.to_ts && is_native_tsrx_template_node(node.argument)) {
+			return b.return(
+				build_template_node_to_tsrx_element(
+					/** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.argument)),
+					context,
+				),
+				/** @type {AST.NodeWithLocation} */ (node),
+			);
+		}
 		if (!is_inside_component(context)) {
 			if (node.argument) {
 				return b.return(
@@ -2636,10 +2451,6 @@ const visitors = {
 				);
 			}
 			return context.next();
-		}
-		const info = context.state.return_flags?.get(node);
-		if (info) {
-			return b.stmt(b.assignment('=', b.id(info.name), b.true));
 		}
 		return context.next();
 	},
@@ -3050,6 +2861,420 @@ const visitors = {
 };
 
 /**
+ * Returns the single argument expression of a `_$_.output_push(x)` statement, or
+ * `null` for anything else. Every `output_push` argument is a pure string
+ * expression (a literal, or `escape(…)` / `attr(…)` / a value id) computed before
+ * the push, so any run of these folds into one `output_push(a + b + c)` without
+ * changing evaluation order or the emitted bytes.
+ * @param {AST.Node} stmt
+ * @returns {AST.Expression | null}
+ */
+function output_push_arg(stmt) {
+	if (stmt.type !== 'ExpressionStatement') return null;
+	const expr = stmt.expression;
+	if (
+		expr.type === 'CallExpression' &&
+		expr.callee.type === 'Identifier' &&
+		expr.callee.name === '_$_.output_push' &&
+		expr.arguments.length === 1 &&
+		expr.arguments[0].type !== 'SpreadElement'
+	) {
+		return /** @type {AST.Expression} */ (expr.arguments[0]);
+	}
+	return null;
+}
+
+/**
+ * True if a block body declares any block-scoped binding, in which case the
+ * `{ … }` is a meaningful lexical scope and must not be unwrapped. Conservative:
+ * treats every declaration form (incl. hoisting `var`) as a binding.
+ * @param {AST.Statement[]} body
+ * @returns {boolean}
+ */
+function declares_binding(body) {
+	return body.some(
+		(stmt) =>
+			stmt.type === 'VariableDeclaration' ||
+			stmt.type === 'FunctionDeclaration' ||
+			stmt.type === 'ClassDeclaration',
+	);
+}
+
+/**
+ * @param {AST.Expression} arg
+ * @returns {boolean}
+ */
+function is_string_literal(arg) {
+	return arg.type === 'Literal' && typeof arg.value === 'string';
+}
+
+/**
+ * True if a block directly contains an `output_push` — i.e. unwrapping it would
+ * enable a fold. Keeps the unwrap scoped to the SSR template path instead of
+ * stripping every binding-free block (e.g. server-module export wrappers).
+ * @param {AST.Statement[]} body
+ * @returns {boolean}
+ */
+function contains_output_push(body) {
+	return body.some((stmt) => output_push_arg(stmt) !== null);
+}
+
+/**
+ * Builds one `+`-concatenated expression from a run of `output_push` argument
+ * expressions, merging consecutive string literals into single literals.
+ * @param {AST.Expression[]} args
+ * @returns {AST.Expression}
+ */
+function build_concat(args) {
+	/** @type {(string | AST.Expression)[]} */
+	const parts = [];
+	for (const arg of args) {
+		const last = parts[parts.length - 1];
+		if (is_string_literal(arg)) {
+			const value = /** @type {string} */ (/** @type {AST.Literal} */ (arg).value);
+			if (typeof last === 'string') {
+				parts[parts.length - 1] = last + value;
+			} else {
+				parts.push(value);
+			}
+		} else {
+			parts.push(arg);
+		}
+	}
+	const exprs = parts.map((p) => (typeof p === 'string' ? b.literal(p) : p));
+	let concat = exprs[0];
+	for (let i = 1; i < exprs.length; i++) {
+		concat = b.binary('+', concat, exprs[i]);
+	}
+	return concat;
+}
+
+// Runtime helpers whose calls return a string and never touch the output buffer
+// — safe to leave inside an accumulated run. Anything else under the `_$_.`
+// namespace (render_component, regular_block, try_block, set_output_target, the
+// serialized-push helpers, …) may branch/emit and forces a flush before it.
+const PURE_RUNTIME_CALLS = new Set(['_$_.escape', '_$_.attr', '_$_.clsx']);
+
+/**
+ * True if `node` contains a runtime call that may create a child block or emit
+ * out of band (i.e. anything `_$_.*` that isn't in {@link PURE_RUNTIME_CALLS}),
+ * not crossing into nested functions (those are separate blocks).
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+function contains_branching_call(node) {
+	let found = false;
+	/** @param {unknown} n */
+	const visit = (n) => {
+		if (found || !n || typeof n !== 'object') {
+			return;
+		}
+		if (Array.isArray(n)) {
+			for (const child of n) visit(child);
+			return;
+		}
+		if (!is_traversable_ast_node(n) || isFunctionNode(n)) {
+			return;
+		}
+		if (
+			n.type === 'CallExpression' &&
+			n.callee.type === 'Identifier' &&
+			n.callee.name.startsWith('_$_.') &&
+			n.callee.name !== '_$_.output_push' &&
+			!PURE_RUNTIME_CALLS.has(n.callee.name)
+		) {
+			found = true;
+			return;
+		}
+		for (const key in n) {
+			if (key === 'metadata' || key === 'loc' || key === 'leadingComments') continue;
+			visit(n[key]);
+		}
+	};
+	visit(node);
+	return found;
+}
+
+/**
+ * Inlines binding-free `{ … }` blocks that directly contain a push (the
+ * `{ escape(x) }` holes) so their pushes become siblings and can coalesce.
+ * Recurses only through such blocks — control flow and bindful blocks are left
+ * for the threader to descend into.
+ * @param {AST.Statement[]} list
+ * @returns {AST.Statement[]}
+ */
+function flatten_push_blocks(list) {
+	/** @type {AST.Statement[]} */
+	const out = [];
+	for (const stmt of list) {
+		if (
+			stmt.type === 'BlockStatement' &&
+			!declares_binding(stmt.body) &&
+			contains_output_push(stmt.body)
+		) {
+			out.push(...flatten_push_blocks(/** @type {AST.Statement[]} */ (stmt.body)));
+		} else {
+			out.push(stmt);
+		}
+	}
+	return out;
+}
+
+const CONTAINER_TYPES = new Set([
+	'BlockStatement',
+	'IfStatement',
+	'ForStatement',
+	'ForInStatement',
+	'ForOfStatement',
+	'WhileStatement',
+	'DoWhileStatement',
+	'SwitchStatement',
+	'TryStatement',
+	'LabeledStatement',
+]);
+
+/**
+ * True if any of a container's non-body header expressions (a loop init/test, an
+ * `if`/`switch` discriminant, …) contains a branching call — in which case we
+ * cannot safely thread the accumulator through it.
+ * @param {AST.Statement} stmt
+ * @returns {boolean}
+ */
+function container_header_branches(stmt) {
+	switch (stmt.type) {
+		case 'IfStatement':
+		case 'WhileStatement':
+		case 'DoWhileStatement':
+			return contains_branching_call(stmt.test);
+		case 'SwitchStatement':
+			return (
+				contains_branching_call(stmt.discriminant) ||
+				stmt.cases.some((c) => c.test && contains_branching_call(c.test))
+			);
+		case 'ForStatement':
+			return (
+				(!!stmt.init && contains_branching_call(stmt.init)) ||
+				(!!stmt.test && contains_branching_call(stmt.test)) ||
+				(!!stmt.update && contains_branching_call(stmt.update))
+			);
+		case 'ForInStatement':
+		case 'ForOfStatement':
+			return contains_branching_call(stmt.right);
+		default:
+			return false;
+	}
+}
+
+/**
+ * Accumulator threading for one runtime block body and everything inside it
+ * except nested functions (separate blocks). Coalesces adjacent pushes into
+ * `__out += a + b + c`, threads the same accumulator through control flow and
+ * binding-free blocks, and flushes (`output_push(__out); __out = ''`) before any
+ * branching statement. See {@link accumulate_output_pushes} for why this stays
+ * within block boundaries.
+ * @param {AST.Statement[]} list
+ * @param {string} out_id
+ * @returns {AST.Statement[]}
+ */
+function thread_statement_list(list, out_id) {
+	const flat = flatten_push_blocks(list);
+	/** @type {AST.Statement[]} */
+	const out = [];
+	/** @type {AST.Expression[]} */
+	let pending = [];
+	const commit = () => {
+		if (pending.length === 0) return;
+		out.push(b.stmt(b.assignment('+=', b.id(out_id), build_concat(pending))));
+		pending = [];
+	};
+	const flush = () => {
+		commit();
+		out.push(b.stmt(b.call(b.id('_$_.output_push'), b.id(out_id))));
+		out.push(b.stmt(b.assignment('=', b.id(out_id), b.literal(''))));
+	};
+	for (const stmt of flat) {
+		const arg = output_push_arg(stmt);
+		if (arg !== null) {
+			pending.push(arg);
+		} else if (CONTAINER_TYPES.has(stmt.type) && !container_header_branches(stmt)) {
+			commit();
+			thread_container(stmt, out_id);
+			out.push(stmt);
+		} else if (stmt.type === 'ReturnStatement' || contains_branching_call(stmt)) {
+			flush();
+			out.push(stmt);
+		} else {
+			// Pure statement (var decl, `i++`, …): keep, no flush, but commit first
+			// so accumulated pushes stay ordered relative to it.
+			commit();
+			out.push(stmt);
+		}
+	}
+	commit();
+	return out;
+}
+
+/**
+ * Threads the accumulator into a container's body slot(s), in place.
+ * @param {AST.Statement} stmt
+ * @param {string} out_id
+ * @returns {void}
+ */
+function thread_container(stmt, out_id) {
+	/** @param {AST.Statement} node @returns {AST.Statement} */
+	const body_slot = (node) => {
+		if (node.type === 'BlockStatement') {
+			node.body = thread_statement_list(node.body, out_id);
+			return node;
+		}
+		return b.block(thread_statement_list([node], out_id));
+	};
+	switch (stmt.type) {
+		case 'BlockStatement':
+			stmt.body = thread_statement_list(stmt.body, out_id);
+			break;
+		case 'IfStatement':
+			stmt.consequent = body_slot(stmt.consequent);
+			if (stmt.alternate) stmt.alternate = body_slot(stmt.alternate);
+			break;
+		case 'ForStatement':
+		case 'ForInStatement':
+		case 'ForOfStatement':
+		case 'WhileStatement':
+		case 'DoWhileStatement':
+		case 'LabeledStatement':
+			stmt.body = body_slot(stmt.body);
+			break;
+		case 'SwitchStatement':
+			for (const switch_case of stmt.cases) {
+				switch_case.consequent = thread_statement_list(switch_case.consequent, out_id);
+			}
+			break;
+		case 'TryStatement':
+			stmt.block.body = thread_statement_list(stmt.block.body, out_id);
+			if (stmt.handler)
+				stmt.handler.body.body = thread_statement_list(stmt.handler.body.body, out_id);
+			if (stmt.finalizer) stmt.finalizer.body = thread_statement_list(stmt.finalizer.body, out_id);
+			break;
+	}
+}
+
+/**
+ * True if `body` directly contains an `output_push` (not inside a nested
+ * function), i.e. it is a runtime block body the accumulator should rewrite.
+ * @param {AST.Statement[]} body
+ * @returns {boolean}
+ */
+function has_direct_output_push(body) {
+	let found = false;
+	/** @param {unknown} n */
+	const visit = (n) => {
+		if (found || !n || typeof n !== 'object') return;
+		if (Array.isArray(n)) {
+			for (const child of n) visit(child);
+			return;
+		}
+		if (!is_traversable_ast_node(n) || isFunctionNode(n)) return;
+		if (output_push_arg(n) !== null) {
+			found = true;
+			return;
+		}
+		for (const key in n) {
+			if (key === 'metadata' || key === 'loc' || key === 'leadingComments') continue;
+			visit(n[key]);
+		}
+	};
+	body.forEach(visit);
+	return found;
+}
+
+/**
+ * Picks an accumulator name not used anywhere in `body` (incl. nested scopes).
+ * @param {AST.Statement[]} body
+ * @returns {string}
+ */
+function fresh_accumulator_name(body) {
+	/** @type {Set<string>} */
+	const names = new Set();
+	/** @param {unknown} n */
+	const visit = (n) => {
+		if (!n || typeof n !== 'object') return;
+		if (Array.isArray(n)) {
+			for (const child of n) visit(child);
+			return;
+		}
+		if (!is_traversable_ast_node(n)) return;
+		if (n.type === 'Identifier' && typeof n.name === 'string') names.add(n.name);
+		for (const key in n) {
+			if (key === 'metadata' || key === 'loc' || key === 'leadingComments') continue;
+			visit(n[key]);
+		}
+	};
+	body.forEach(visit);
+	let name = '__out';
+	for (let i = 2; names.has(name); i++) name = `__out${i}`;
+	return name;
+}
+
+/**
+ * Pass over the generated server program: within each runtime block, accumulate
+ * output into a single `let __out` string and push it once per block instead of
+ * once per element — flushing only before a child block. This beats the per-item
+ * push shape (the whole `@for` feed lands in one push) because accumulation spans
+ * loops and control flow.
+ *
+ * Correctness rests on the block model: every runtime block owns its own output
+ * buffer, and a child block reserves its slot in the parent buffer at the moment
+ * it branches — so everything before it must already be in the buffer. We declare
+ * one accumulator per runtime block body (a function/arrow that directly pushes),
+ * thread it through that body's control flow without crossing nested functions,
+ * and flush before every branching statement and at block end. So a child block's
+ * slot always follows what the parent already flushed: we never accumulate across
+ * a block boundary.
+ * @param {AST.Program} program
+ * @returns {void}
+ */
+function accumulate_output_pushes(program) {
+	const seen = new WeakSet();
+	/** @param {unknown} node */
+	const recurse = (node) => {
+		if (Array.isArray(node)) {
+			for (const child of node) recurse(child);
+			return;
+		}
+		if (!is_traversable_ast_node(node)) return;
+		if (seen.has(node)) return;
+		seen.add(node);
+
+		if (isFunctionNode(node)) {
+			const body = /** @type {AST.Function} */ (node).body;
+			if (body && body.type === 'BlockStatement' && has_direct_output_push(body.body)) {
+				const out_id = fresh_accumulator_name(body.body);
+				body.body = [
+					b.let(b.id(out_id), b.literal('')),
+					...thread_statement_list(body.body, out_id),
+					b.stmt(b.call(b.id('_$_.output_push'), b.id(out_id))),
+				];
+			}
+		}
+
+		for (const key in node) {
+			if (
+				key === 'metadata' ||
+				key === 'loc' ||
+				key === 'start' ||
+				key === 'end' ||
+				key === 'leadingComments'
+			) {
+				continue;
+			}
+			recurse(node[key]);
+		}
+	};
+	recurse(program);
+}
+
+/**
  * @param {string} filename
  * @param {string} source
  * @param {AnalysisResult} analysis
@@ -3112,6 +3337,12 @@ export function transform_server(filename, source, analysis, minify_css, dev = f
 	body.push(...program.body);
 
 	program.body = body;
+
+	// Accumulate each runtime block's output into a single `__out` string and
+	// push it once per block (flushing only before a child block) so the whole
+	// `@for` feed lands in one push. Stays within block boundaries by
+	// construction (see accumulate_output_pushes).
+	accumulate_output_pushes(/** @type {AST.Program} */ (program));
 
 	const { code, map } = print(
 		program,

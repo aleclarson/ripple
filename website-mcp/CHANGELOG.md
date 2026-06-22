@@ -1,5 +1,61 @@
 # website-mcp
 
+## 0.0.45
+
+### Patch Changes
+
+- Updated dependencies
+  [[`cc3176b`](https://github.com/Ripple-TS/ripple/commit/cc3176b4e40021021986830bdfa3295530715432)]:
+  - @tsrx/ripple@0.1.32
+  - @tsrx/mcp@0.0.45
+  - @tsrx/preact@0.1.32
+  - @tsrx/react@0.2.32
+  - @tsrx/solid@0.1.32
+  - @tsrx/vue@0.1.32
+
+## 0.0.44
+
+### Patch Changes
+
+- Updated dependencies
+  [[`3d93339`](https://github.com/Ripple-TS/ripple/commit/3d93339e851818b547c43c29c8965700c069b037),
+  [`5646eb4`](https://github.com/Ripple-TS/ripple/commit/5646eb4e4c101b34100acf30ea57ad4065a47720),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e),
+  [`8747e8f`](https://github.com/Ripple-TS/ripple/commit/8747e8f306628443d3c4d73bce0d79e986f5966e)]:
+  - @tsrx/ripple@0.1.31
+  - @tsrx/react@0.2.31
+  - @tsrx/preact@0.1.31
+  - @tsrx/solid@0.1.31
+  - @tsrx/vue@0.1.31
+  - @tsrx/mcp@0.0.44
+
+## 0.0.43
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @tsrx/mcp@0.0.43
+  - @tsrx/preact@0.1.30
+  - @tsrx/react@0.2.30
+  - @tsrx/ripple@0.1.30
+  - @tsrx/solid@0.1.30
+  - @tsrx/vue@0.1.30
+
+## 0.0.42
+
+### Patch Changes
+
+- Updated dependencies
+  [[`3b6fb73`](https://github.com/Ripple-TS/ripple/commit/3b6fb73170d4ad6a383befdda951ce0da4fcbb46),
+  [`1c645c8`](https://github.com/Ripple-TS/ripple/commit/1c645c8f854df23bb1271b3402d1885616b525cd),
+  [`b1256fd`](https://github.com/Ripple-TS/ripple/commit/b1256fdb5bf279ee7dd20bf1a71dcfccc47e279c)]:
+  - @tsrx/ripple@0.1.29
+  - @tsrx/react@0.2.29
+  - @tsrx/preact@0.1.29
+  - @tsrx/solid@0.1.29
+  - @tsrx/vue@0.1.29
+  - @tsrx/mcp@0.0.42
+
 ## 0.0.41
 
 ### Patch Changes

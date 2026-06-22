@@ -5,7 +5,6 @@ import {
 	runSharedCompileDiagnosticsTests,
 	runSharedCompileTests,
 	runSharedComponentParamsTests,
-	runSharedSwitchHelperHoistingTests,
 	runSharedTsxExpressionTsrxTests,
 } from '@tsrx/core/test-harness/compile';
 import { runSharedSourceMappingTests } from '@tsrx/core/test-harness/source-mappings';
@@ -24,12 +23,6 @@ runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name: 'solid' });
 runSharedCodeBlockChildrenTests({ compile, name: 'solid' });
 runSharedClassFunctionComponentTests({ compile, compile_to_volar_mappings, name: 'solid' });
 runSharedComponentParamsTests({ compile, compile_to_volar_mappings, name: 'solid' });
-runSharedSwitchHelperHoistingTests({
-	compile,
-	compile_to_volar_mappings,
-	name: 'solid',
-	clientHelperShape: 'module-function',
-});
 
 describe('@tsrx/solid basic', () => {
 	describe('component → function', () => {
@@ -440,7 +433,10 @@ describe('@tsrx/solid basic', () => {
 			expect(code).not.toContain('if (cond)');
 		});
 
-		it('component-body plain if return uses trailing render output as <Show> fallback', () => {
+		it('component-body plain if return stays ordinary JS (no reactive <Show>)', () => {
+			// A plain JS `if` guard is not a `@if` directive, so it must compile to
+			// ordinary control flow returning JSX — identical to the same guard in a
+			// regular `function C() { … }` body. Only `@`-directives lower to <Show>.
 			const { code } = compile(
 				`function StatusBadge(props) @{
 					if (props.disabled) {
@@ -452,10 +448,11 @@ describe('@tsrx/solid basic', () => {
 				'StatusBadge.tsrx',
 			);
 
-			expect(code).toContain("import { Show } from 'solid-js'");
-			expect(code).toContain('<Show when={props.disabled} fallback={StatusBadge__static2}>');
-			expect(code).toContain('{StatusBadge__static1}</Show>');
-			expect(code).not.toContain('<>{StatusBadge__static2}<Show');
+			expect(code).toContain('if (props.disabled)');
+			expect(code).toContain('return StatusBadge__static1;');
+			expect(code).toContain('return StatusBadge__static2;');
+			expect(code).not.toContain('<Show');
+			expect(code).not.toContain("import { Show } from 'solid-js'");
 		});
 
 		it('preserves ordinary control flow for plain functions returning templates', () => {
@@ -689,10 +686,10 @@ describe('@tsrx/solid basic', () => {
 
 	describe('switch helper static-alias suppression', () => {
 		// Switch hoisting (client vs typeOnly) is exercised by the shared
-		// `runSharedSwitchHelperHoistingTests` block above. This block stays
-		// Solid-local because it covers Solid's `canHoistStaticNode` veto on
-		// bare component invocations — a Solid-specific optimization decision
-		// that doesn't apply to React's `App__static` hoisting policy.
+		// hook-hoisting suite. This block stays Solid-local because it covers
+		// Solid's `canHoistStaticNode` veto on bare component invocations — a
+		// Solid-specific optimization decision that doesn't apply to React's
+		// `App__static` hoisting policy.
 		const switch_source = `export function App({ status }: { status: string }) @{
 			@switch (status) {
 				@case "idle": {

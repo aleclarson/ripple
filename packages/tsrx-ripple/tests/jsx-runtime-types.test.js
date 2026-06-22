@@ -21,7 +21,7 @@ function get_variable_types(code) {
 			'ripple/jsx-runtime': ['packages/ripple/src/jsx-runtime.d.ts'],
 			ripple: ['packages/ripple/types/index.d.ts'],
 			'#public': ['packages/ripple/types/index.d.ts'],
-			'#helpers': ['packages/ripple/src/helpers.d.ts'],
+			'@tsrx/core/types/helpers': ['packages/tsrx/types/helpers.d.ts'],
 		},
 	};
 	const host = ts.createCompilerHost(options);
@@ -119,9 +119,37 @@ function StatusBadge() @{
 `;
 		const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
 
-		// Bare expressions as fragment children would read as JSX text (`<>aa</>`),
-		// hiding both identifiers from TypeScript.
-		expect(code).toContain('<>{a}{a}</>');
+		expect(code).toContain("<>{a} {<>{a}</>}{' '}</>");
 		expect(code).not.toContain('<>aa</>');
+	});
+
+	it('keeps an empty fragment inside a container in the TS view', () => {
+		const source = `
+function App() @{
+	<b>{<></>}</b>
+}
+`;
+		const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		expect(code).toContain('<b>{<></>}</b>');
+		expect(code).not.toContain('{null}');
+	});
+
+	it('matches the JSX targets for text, fragments and edge whitespace', () => {
+		const compile = (src) => compile_to_volar_mappings(src, 'App.tsrx', { loose: true }).code;
+
+		expect(compile('let a = <> <>123</> 2 <>123</> </>;')).toContain(
+			"let a = <>{' '}<>123</> 2 <>123</>{' '}</>;",
+		);
+		expect(compile('let b = <> <></> 2 <></> </>;')).toContain(
+			"let b = <>{' '}<></> 2 <></>{' '}</>;",
+		);
+		expect(compile('let c = <></>;')).toContain('let c = <></>;');
+		expect(compile('let e = <><></></>;')).toContain('let e = <><></></>;');
+		// An empty expression container fragment must not collapse to `let f = ;`.
+		expect(compile('let f = <>{}</>;')).toContain('let f = <></>;');
+		expect(compile('let d = <pre> <b>1</b> <b>2</b> </pre>;')).toContain(
+			"let d = <pre>{' '}<b>1</b> <b>2</b>{' '}</pre>;",
+		);
 	});
 });

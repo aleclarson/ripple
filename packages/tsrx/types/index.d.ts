@@ -4,7 +4,7 @@ import type { TSESTree } from '@typescript-eslint/types';
 import type { Parse } from './parse.js';
 import type * as ESRap from 'esrap';
 import type { Position } from 'acorn';
-import type { RequireAllOrNone } from '../src/helpers.js';
+import type { RequireAllOrNone } from './helpers';
 import type {
 	JsxPlatform,
 	JsxPlatformHooks,
@@ -83,6 +83,7 @@ interface BaseNodeMetaData {
 	commentContainerId?: number;
 	parenthesized?: boolean;
 	native_tsrx?: boolean;
+	tsrx_generated_wrapper?: boolean;
 	native_tsrx_template_block?: boolean;
 	dynamicElement?: boolean;
 	templateMode?: 'script' | 'template';
@@ -296,6 +297,8 @@ declare module 'estree' {
 		ParenthesizedExpression: ParenthesizedExpression;
 		TSAsExpression: TSAsExpression;
 	}
+
+	type TraversableAstNode = AST.Node & Record<string, unknown>;
 
 	// Ripple-normalized template node shapes. The core parser emits JSX-shaped
 	// TSRX nodes; @tsrx/ripple creates these during its normalization pass.

@@ -3,7 +3,7 @@
   "description": "Core compiler infrastructure for TSRX syntax",
   "license": "MIT",
   "author": "Dominic Gannaway",
-  "version": "0.1.28",
+  "version": "0.1.32",
   "type": "module",
   "repository": {
     "type": "git",
@@ -26,6 +26,9 @@
     },
     "./types/acorn": {
       "types": "./types/acorn.d.ts"
+    },
+    "./types/helpers": {
+      "types": "./types/helpers.d.ts"
     },
     "./runtime/ref": {
       "types": "./types/runtime/ref.d.ts",

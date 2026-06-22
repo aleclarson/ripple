@@ -147,6 +147,7 @@ export {
 	create_hook_safe_helper as createHookSafeHelper,
 	create_element_ref_target_type as createElementRefTargetType,
 	create_element_ref_target_type_for_name as createElementRefTargetTypeForName,
+	build_return_expression as buildReturnExpression,
 	createJsxTransform,
 	extract_jsx_setup_declarations as extractJsxSetupDeclarations,
 	is_component_like_element,
@@ -159,11 +160,16 @@ export {
 	rewrite_loop_continues_to_bare_returns as rewriteLoopContinuesToBareReturns,
 	to_jsx_attribute as toJsxAttribute,
 	validate_at_most_one_ref_attribute as validateAtMostOneRefAttribute,
+	wrap_edge_whitespace as wrapEdgeWhitespace,
 } from './transform/jsx/index.js';
 export {
 	in_jsx_child_context as inJsxChildContext,
-	tsx_node_to_jsx_expression as tsxNodeToJsxExpression,
+	is_empty_jsx_fragment as isEmptyJsxFragment,
 	tsx_with_ts_locations as tsxWithTsLocations,
+	is_template_if_node as isTemplateIfNode,
+	is_template_for_of_node as isTemplateForOfNode,
+	is_template_switch_node as isTemplateSwitchNode,
+	is_template_try_node as isTemplateTryNode,
 } from './transform/jsx/helpers.js';
 export {
 	collect_style_ref_attributes as collectStyleRefAttributes,
