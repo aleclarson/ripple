@@ -11,20 +11,15 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Shared assertions covering where each target places the lifted
- * `StatementBodyHook` helper component for hook-bearing switch cases
- * — module scope for the client transform on every target whose platform
- * sets `moduleScopedHookComponents: true` (React, Solid, Vue), and a local
+ * `StatementBodyHook` helper component for hook-bearing switch cases:
+ * module scope for the client transform on targets whose platform sets
+ * `moduleScopedHookComponents: true` (React), and a local
  * `let App__StatementBodyHook<N>` cache slot + per-render `?? (= …)` lazy
  * initializer otherwise. `compile_to_volar_mappings` keeps the local-scoped
  * shape regardless of platform default so Volar's virtual TSX can still
  * resolve closure-captured bindings against the component body.
  *
- * The `StatementBodyHook` name is React-flavored historically, but on
- * Vue/Solid the lift solves different problems (avoid re-`defineVaporComponent`
- * per render, keep hooks in stable branch components, etc.) — same machinery
- * either way.
- *
- * @typedef {'module-function' | 'module-vapor-component' | 'local-cache'} SwitchHelperClientShape
+ * @typedef {'module-function' | 'local-cache'} SwitchHelperClientShape
  *
  * @param {SwitchHelperHoistingHarness} harness
  */
@@ -57,20 +52,10 @@ export function runSharedSwitchHelperHoistingTests({
 			const { code } = compile(switch_source, 'App.tsrx');
 
 			if (clientHelperShape === 'module-function') {
-				// React/Solid: top-level `function App__StatementBodyHook<N>()`
+				// React: top-level `function App__StatementBodyHook<N>()`
 				// declarations, no per-render cache slots.
 				const top_level_helper_count = (
 					code.match(/^function App__StatementBodyHook\d+\([^)]*\)/gm) || []
-				).length;
-				expect(top_level_helper_count).toBe(2);
-				expect(code).not.toContain('let App__StatementBodyHook');
-			} else if (clientHelperShape === 'module-vapor-component') {
-				// Vue: top-level `const App__StatementBodyHook<N> =
-				// defineVaporComponent(function App__StatementBodyHook<N>() {...})`.
-				const top_level_helper_count = (
-					code.match(
-						/^const App__StatementBodyHook\d+ = defineVaporComponent\(function App__StatementBodyHook\d+\([^)]*\)/gm,
-					) || []
 				).length;
 				expect(top_level_helper_count).toBe(2);
 				expect(code).not.toContain('let App__StatementBodyHook');
@@ -90,9 +75,7 @@ export function runSharedSwitchHelperHoistingTests({
 
 			// Volar's virtual TSX always uses the local cache-slot pattern so
 			// closure-captured bindings stay in the component scope for type
-			// checking. The wrapper inside the lazy initializer varies per
-			// target — `defineVaporComponent(function …)` on Vue, plain
-			// `function …` elsewhere — but the slot + `?? (=` shape is uniform.
+			// checking.
 			const cache_slot_count = (code.match(/^let App__StatementBodyHook\d+;$/gm) || []).length;
 			expect(cache_slot_count).toBe(2);
 			expect(code).toMatch(
@@ -100,8 +83,6 @@ export function runSharedSwitchHelperHoistingTests({
 			);
 			// No top-level helper declarations in either lifted shape.
 			expect(code).not.toMatch(/^function App__StatementBodyHook\d+\(\)/m);
-			expect(code).not.toMatch(/^const App__StatementBodyHook\d+ = defineVaporComponent\(/m);
 		});
 	});
 }
-
