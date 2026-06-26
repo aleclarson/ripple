@@ -139,6 +139,7 @@ type AcornTSNode<T> = Omit<T, 'parent' | 'loc' | 'range' | 'expression'> & {
 
 	leadingComments?: AST.Comment[] | undefined;
 	trailingComments?: AST.Comment[] | undefined;
+	append_into?: AST.Identifier;
 };
 
 interface FunctionLikeTS {
@@ -521,6 +522,8 @@ declare module 'estree' {
 		metadata: BaseNodeMetaData;
 
 		comments?: Comment[];
+
+		append_into?: AST.Identifier;
 	}
 
 	interface NodeWithLocation {

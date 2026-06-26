@@ -21,7 +21,7 @@ allowBuilds:
   tree-sitter-cli: true
 
 # variables used in the catalog
-prettier_common: &prettier_common ^3.8.3
+prettier_common: &prettier_common ^3.8.4
 ts_common: &ts_common ^5.9.3
 ts_eslint_parser: &ts_eslint_parser ^8.56.1
 esrap_common: &esrap_common ^2.2.8
@@ -34,10 +34,7 @@ packages:
   - grammars/tree-sitter
   - website-new
   - website-tsrx
-  - website-tsrx-new
   - benchmarks
-  - benchmarks/js-framework
-  - benchmarks/js-framework/*
   - benchmarks/recursive-context
   - benchmarks/recursive-context/*
   - benchmarks/signal-favoring
@@ -111,6 +108,7 @@ catalogs:
     muggle-string: ^0.4.1
     ora: ^9.3.0
     ovsx: ^0.10.12
+    playwright: ^1.61.0
     polka: ^1.0.0-next.25
     preact: ^10.27.0
     prettier: *prettier_common
